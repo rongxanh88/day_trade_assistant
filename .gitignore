@@ -1,1 +1,20 @@
 .env
+
+# everything in the config/__pycache__/
+config/__pycache__/
+
+# everything in the src/__pycache__/
+src/data/__pycache__/
+src/integrations/__pycache__/
+src/agents/__pycache__/
+src/utils/__pycache__/
+src/config/__pycache__/
+src/data/__pycache__/
+src/integrations/__pycache__/
+src/agents/__pycache__/
+
+# everything in the tests/__pycache__/
+tests/__pycache__/
+
+# everything in the tests/fixtures/vcr_cassettes/
+tests/fixtures/vcr_cassettes/
