@@ -18,7 +18,7 @@ A LangGraph-powered trading assistant that identifies high-probability setups wh
 - **Economic Calendar**: Key events that impact volatility
 
 ### 3. **Setup Types to Identify**
-- **Momentum Breakouts**: Volume + price action
+- **Doji Sandwich**: Big Move prior day + Doji current day
 - **Gap Plays**: Pre-market/post-market opportunities
 - **Swing Trend Trades**: price action + trending with entire stock market direction + relative strength/weakness to overall market
 - **Day Trades**: price action + relative strength/weakness to overall market + Long on stock above yesterday's high / Short a stock below yesterday's low

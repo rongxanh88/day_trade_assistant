@@ -71,13 +71,13 @@ class TradingConfig:
     """Trading-specific configuration constants."""
     
     # Setup Types
-    MOMENTUM_BREAKOUT = "momentum_breakout"
+    DOJI_SANDWICH = "doji_sandwich"
     GAP_PLAY = "gap_play"
     SWING_TRADE = "swing_trade"
     DAY_TRADE = "day_trade"
     
     SETUP_TYPES = [
-        MOMENTUM_BREAKOUT,
+        DOJI_SANDWICH,
         GAP_PLAY,
         SWING_TRADE,
         DAY_TRADE
@@ -92,29 +92,9 @@ class TradingConfig:
         "daily": "daily"
     }
     
-    # Technical Indicators
-    # DEFAULT_RSI_PERIOD = 14
-    # DEFAULT_MACD_FAST = 12
-    # DEFAULT_MACD_SLOW = 26
-    # DEFAULT_MACD_SIGNAL = 9
-    # DEFAULT_BB_PERIOD = 20
-    # DEFAULT_BB_STD = 2.0
-    
-    # Volume Analysis
-    # MIN_VOLUME_FOR_BREAKOUT = 1000000  # 1M shares
-    # VOLUME_MA_PERIOD = 20
-    
-    # Price Movement Thresholds
-    # MIN_BREAKOUT_PERCENT = 2.0  # 2% minimum breakout
-    # MAX_DRAWDOWN_PERCENT = 5.0  # 5% max drawdown tolerance
-    
-    # Options Flow
-    # MIN_OPTION_VOLUME = 1000
-    # MIN_OPTION_OI_RATIO = 2.0  # Volume to OI ratio
-    
     # Market Conditions
-    # TREND_LOOKBACK_DAYS = 20
-    # VOLATILITY_LOOKBACK_DAYS = 30
+    TREND_LOOKBACK_DAYS = 20
+    VOLATILITY_LOOKBACK_DAYS = 30
 
 
 # Initialize trading config
