@@ -44,62 +44,7 @@ class TradierClient:
             except Exception as e:
                 logger.error(f"Request failed: {str(e)}")
                 raise
-    
-    async def get_quote(self, symbol: str) -> Quote:
-        """Get real-time quote for a symbol."""
-        params = {"symbols": symbol}
-        data = await self._make_request("GET", "/markets/quotes", params=params)
-        
-        if "quotes" not in data or not data["quotes"]["quote"]:
-            raise ValueError(f"No quote data for symbol {symbol}")
-        
-        quote_data = data["quotes"]["quote"]
-        if isinstance(quote_data, list):
-            quote_data = quote_data[0]
-        
-        return Quote(
-            symbol=quote_data["symbol"],
-            price=float(quote_data["last"]),
-            bid=float(quote_data["bid"]),
-            ask=float(quote_data["ask"]),
-            volume=int(quote_data["volume"]),
-            timestamp=datetime.now(),
-            change=float(quote_data["change"]),
-            change_percent=float(quote_data["change_percentage"])
-        )
-    
-    async def get_quotes(self, symbols: List[str]) -> Dict[str, Quote]:
-        """Get real-time quotes for multiple symbols."""
-        if not symbols:
-            return {}
-        
-        symbol_str = ",".join(symbols)
-        params = {"symbols": symbol_str}
-        data = await self._make_request("GET", "/markets/quotes", params=params)
-        
-        quotes = {}
-        if "quotes" in data and data["quotes"]["quote"]:
-            quote_list = data["quotes"]["quote"]
-            if not isinstance(quote_list, list):
-                quote_list = [quote_list]
             
-            for quote_data in quote_list:
-                try:
-                    quote = Quote(
-                        symbol=quote_data["symbol"],
-                        price=float(quote_data["last"]),
-                        bid=float(quote_data["bid"]),
-                        ask=float(quote_data["ask"]),
-                        volume=int(quote_data["volume"]),
-                        timestamp=datetime.now(),
-                        change=float(quote_data["change"]),
-                        change_percent=float(quote_data["change_percentage"])
-                    )
-                    quotes[quote.symbol] = quote
-                except (KeyError, ValueError, TypeError) as e:
-                    logger.warning(f"Failed to parse quote for {quote_data.get('symbol', 'unknown')}: {e}")
-        
-        return quotes
     
     async def get_historical_data(
         self, 
