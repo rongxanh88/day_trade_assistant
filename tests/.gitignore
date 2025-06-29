@@ -1,0 +1,11 @@
+# Test artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Keep VCR cassettes out of git for security
+fixtures/vcr_cassettes/*.yaml 

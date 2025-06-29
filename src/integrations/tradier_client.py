@@ -104,9 +104,9 @@ class TradierClient:
     async def get_historical_data(
         self, 
         symbol: str, 
-        interval: str = "15min", 
-        start: date = None, 
-        end: date = None
+        interval: str = "daily", 
+        start: date = datetime.now().date() - datetime.timedelta(days=90), # default to 90 days prior to today, format to YYYY-MM-DD
+        end: date = datetime.now().date() # default to today, format to YYYY-MM-DD
     ) -> List[OHLCV]:
         """Get historical OHLCV data for a symbol."""
         params = {
@@ -132,7 +132,7 @@ class TradierClient:
         for bar in history_data:
             try:
                 ohlcv = OHLCV(
-                    timestamp=datetime.fromisoformat(bar["date"]),
+                    date=bar["date"],
                     open=float(bar["open"]),
                     high=float(bar["high"]),
                     low=float(bar["low"]),
