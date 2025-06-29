@@ -15,10 +15,9 @@ class Settings(BaseSettings):
     # default_model: str = Field(default="gpt-4-1106-preview", env="DEFAULT_MODEL")
     
     # Database Configuration
-    # database_url: str = Field(
-    #     default="sqlite:///./trading_assistant.db",
-    #     env="DATABASE_URL"
-    # )
+    database_url: str = Field(
+        default="postgresql+asyncpg://postgres:postgres@localhost:5432/us_market_data"
+    )
     # redis_url: str = Field(default="redis://localhost:6379", env="REDIS_URL")
     
     # Trading Configuration

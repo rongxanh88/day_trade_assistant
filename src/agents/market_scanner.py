@@ -11,7 +11,7 @@ This agent demonstrates core LangGraph concepts:
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from typing import Dict, List, Any
 
 from langgraph.graph import StateGraph, END, START
@@ -20,39 +20,175 @@ from langchain_core.tools import tool
 from src.data.models import (
     TradingState,
     SetupType, 
-    TimeFrame, 
-    AlertLevel,
+    # TimeFrame, 
+    # AlertLevel,
     MarketCondition,
-    Quote
+    # Quote
 )
 from src.integrations.tradier_client import tradier_client
+from src.utils.database import db_manager
 # from config.settings import settings
 
 
 logger = logging.getLogger(__name__)
 
 
-# Tools for the LangGraph workflow
-@tool
-async def fetch_market_quotes(symbols: List[str]) -> Dict[str, Quote]:
-    """Fetch real-time quotes for multiple symbols."""
+# LangGraph node functions
+async def update_daily_market_data(state: TradingState) -> TradingState:
+    """
+    Update daily market data for watchlist symbols.
+    
+    Checks database for missing data in the past year and fetches from Tradier API if needed.
+    """
+    logger.info("Starting daily market data update...")
+    
+    # Default watchlist - in production this would come from user preferences
+    default_watchlist = ["SPY", "QQQ", "IWM", "AAPL", "TSLA", "NVDA", "MSFT", "AMZN"]
+    
+    # Calculate date range for the past year
+    end_date = date.today()
+    start_date = end_date - timedelta(days=365)
+    
+    updated_state = state.copy()
+    updated_state["workflow_status"] = "updating_market_data"
+    updated_state["messages"].append({
+        "timestamp": datetime.now(),
+        "type": "info",
+        "message": f"Starting market data update for {len(default_watchlist)} symbols"
+    })
+    
     try:
-        quotes = await tradier_client.get_quotes(symbols)
-        logger.info(f"Fetched quotes for {len(quotes)} symbols")
-        return quotes
+        symbols_updated = 0
+        total_records_fetched = 0
+        
+        for symbol in default_watchlist:
+            try:
+                logger.info(f"Checking market data for {symbol}...")
+                
+                # Get existing data dates from database
+                existing_dates = await db_manager.get_existing_data_dates(symbol, start_date, end_date)
+                logger.info(f"{symbol}: Found {len(existing_dates)} existing records in database")
+                
+                # Generate all trading days in the range (excluding weekends)
+                all_dates = []
+                current_date = start_date
+                while current_date <= end_date:
+                    # Skip weekends (Monday=0, Sunday=6)
+                    if current_date.weekday() < 5:  # Monday to Friday
+                        all_dates.append(current_date)
+                    current_date += timedelta(days=1)
+                
+                # Find missing dates
+                existing_date_set = set(existing_dates)
+                missing_dates = [d for d in all_dates if d not in existing_date_set]
+                
+                if missing_dates:
+                    logger.info(f"{symbol}: Found {len(missing_dates)} missing dates, fetching from API...")
+                    
+                    # Fetch missing data from Tradier API
+                    # We'll fetch in chunks to avoid overwhelming the API
+                    missing_start = min(missing_dates)
+                    missing_end = max(missing_dates)
+                    
+                    market_data = await tradier_client.get_historical_data(
+                        symbol=symbol,
+                        interval="daily",
+                        start=missing_start,
+                        end=missing_end
+                    )
+                    
+                    if market_data:
+                        # Filter to only include the actual missing dates
+                        filtered_data = []
+                        for data in market_data:
+                            data_date = data.date
+                            if isinstance(data_date, str):
+                                data_date = datetime.strptime(data_date, "%Y-%m-%d").date()
+                            if data_date in missing_dates:
+                                filtered_data.append(data)
+                        
+                        if filtered_data:
+                            await db_manager.insert_market_data(filtered_data, symbol)
+                            total_records_fetched += len(filtered_data)
+                            logger.info(f"{symbol}: Successfully inserted {len(filtered_data)} new records")
+                        else:
+                            logger.info(f"{symbol}: No new data to insert after filtering")
+                    else:
+                        logger.warning(f"{symbol}: No data returned from API")
+                else:
+                    logger.info(f"{symbol}: Database is up to date")
+                
+                symbols_updated += 1
+                
+            except Exception as e:
+                logger.error(f"Failed to update market data for {symbol}: {e}")
+                updated_state["messages"].append({
+                    "timestamp": datetime.now(),
+                    "type": "error",
+                    "message": f"Failed to update {symbol}: {str(e)}"
+                })
+                # Continue with other symbols instead of failing completely
+                continue
+        
+        # Update state with results
+        updated_state["workflow_status"] = "market_data_updated"
+        updated_state["last_scan_time"] = datetime.now()
+        updated_state["messages"].append({
+            "timestamp": datetime.now(),
+            "type": "success",
+            "message": f"Market data update completed. {symbols_updated} symbols processed, {total_records_fetched} new records fetched."
+        })
+        
+        logger.info(f"Market data update completed successfully. {total_records_fetched} new records fetched.")
+        return updated_state
+        
     except Exception as e:
-        logger.error(f"Failed to fetch quotes: {e}")
-        return {}
+        logger.error(f"Market data update failed: {e}")
+        updated_state["workflow_status"] = "error"
+        updated_state["last_error"] = str(e)
+        updated_state["messages"].append({
+            "timestamp": datetime.now(),
+            "type": "error",
+            "message": f"Market data update failed: {str(e)}"
+        })
+        return updated_state
 
 
-    """Get current market hours and status."""
-    try:
-        market_hours = await tradier_client.get_market_status()
-        logger.info(f"Market status: open={market_hours.is_market_open}")
-        return market_hours
-    except Exception as e:
-        logger.error(f"Failed to get market status: {e}")
-        return None
+async def notify_user(state: TradingState) -> TradingState:
+    """
+    Notify user of workflow completion and results.
+    """
+    logger.info("Notifying user of workflow completion...")
+    
+    updated_state = state.copy()
+    
+    # Create summary message
+    if state["workflow_status"] == "market_data_updated":
+        summary = "✅ Market data update completed successfully!"
+        if state["messages"]:
+            latest_message = state["messages"][-1]
+            if latest_message.get("type") == "success":
+                summary += f"\n{latest_message['message']}"
+    else:
+        summary = "❌ Market data update encountered issues."
+        if state.get("last_error"):
+            summary += f"\nError: {state['last_error']}"
+    
+    updated_state["workflow_status"] = "completed"
+    updated_state["messages"].append({
+        "timestamp": datetime.now(),
+        "type": "notification",
+        "message": summary
+    })
+    
+    # In a real application, this would send notifications via:
+    # - Email
+    # - Slack/Discord webhook
+    # - Push notifications
+    # - WebSocket to frontend
+    logger.info(f"User notification: {summary}")
+    
+    return updated_state
 
 
 # Conditional routing functions
@@ -96,6 +232,8 @@ def create_market_scanner_graph() -> StateGraph:
     workflow = StateGraph(TradingState)
     
     # Add nodes (these are the workflow steps)
+    workflow.add_node("update_daily_market_data", update_daily_market_data)
+    workflow.add_node("notify_user", notify_user)
     # workflow.add_node("check_market", check_market_hours)
     # workflow.add_node("fetch_data", fetch_watchlist_data)
     # workflow.add_node("scan_setups", scan_for_setups)
@@ -103,7 +241,7 @@ def create_market_scanner_graph() -> StateGraph:
     # workflow.add_node("send_alerts", send_alerts)
     
     # Add edges (workflow routing)
-    # workflow.add_edge(START, "check_market")
+    workflow.add_edge(START, "update_daily_market_data")
     
     # Conditional routing from market check
     # workflow.add_conditional_edges(
@@ -142,6 +280,7 @@ def create_market_scanner_graph() -> StateGraph:
     # )
     
     # End after alerts
+    workflow.add_edge("notify_user", END)
     # workflow.add_edge("send_alerts", END)
     
     return workflow
@@ -164,7 +303,7 @@ def create_market_scanner(watchlist: List[str] = None) -> StateGraph:
 
         # User Preferences
         "risk_tolerance": 1.0,
-        "preferred_strategies": [SetupType.MOMENTUM_BREAKOUT],
+        "preferred_strategies": [SetupType.SWING_TRADE],
         "account_size": 25000.0,
         
         # Workflow Control
@@ -189,6 +328,9 @@ def create_market_scanner(watchlist: List[str] = None) -> StateGraph:
 
 # Example usage function
 async def run_market_scan_example():
+    # Ensure database tables exist
+    await db_manager.create_tables()
+
     """Example of how to run the market scanner."""
     logger.info("Starting market scanner example...")
     
