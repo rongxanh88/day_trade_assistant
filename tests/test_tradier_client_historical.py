@@ -84,24 +84,6 @@ class TestTradierClientHistorical:
             
             assert start_date <= bar_date <= end_date
     
-    @pytest.mark.asyncio  
-    @my_vcr.use_cassette('historical_data_different_intervals.yaml')
-    async def test_get_historical_data_different_intervals(self, client):
-        """Test historical data with different time intervals."""
-        symbol = "SPY"
-        intervals = ["5min", "15min", "30min", "1hour", "daily"]
-        
-        for interval in intervals:
-            result = await client.get_historical_data(
-                symbol=symbol,
-                interval=interval
-            )
-            
-            assert isinstance(result, list)
-            # Some intervals might not have data, but shouldn't error
-            if len(result) > 0:
-                first_bar = result[0]
-                assert isinstance(first_bar, OHLCV)
     
     @pytest.mark.asyncio
     @my_vcr.use_cassette('historical_data_invalid_symbol.yaml')

@@ -1,16 +1,13 @@
 from typing import List, Optional
-from pydantic import BaseSettings, Field
-
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     """Application settings and configuration."""
     
     # API Configuration
-    tradier_api_key: str = Field(..., env="TRADIER_API_ACCESS_TOKEN")
-    tradier_base_url: str = Field(
-        default="https://api.tradier.com/v1",
-        env="TRADIER_BASE_URL"
-    )
+    tradier_api_access_token: str = Field(default="dummy_key_for_testing", env="TRADIER_API_ACCESS_TOKEN")
+    tradier_base_url: str = Field(default="https://api.tradier.com/v1")
     
     # LLM Configuration
     # openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
@@ -57,9 +54,7 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
     log_file: str = Field(default="trading_assistant.log", env="LOG_FILE")
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
 # Global settings instance

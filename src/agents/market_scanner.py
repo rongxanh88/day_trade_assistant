@@ -26,7 +26,7 @@ from src.data.models import (
     Quote
 )
 from src.integrations.tradier_client import tradier_client
-from config.settings import settings
+# from config.settings import settings
 
 
 logger = logging.getLogger(__name__)

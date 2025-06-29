@@ -1,9 +1,9 @@
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import List, Dict, Any
 import httpx
 from config.settings import settings
-from src.data.models import Quote, OHLCV, Position, MarketHours
+from src.data.models import Quote, OHLCV
 
 
 logger = logging.getLogger(__name__)
@@ -12,12 +12,12 @@ logger = logging.getLogger(__name__)
 class TradierClient:
     """Async client for Tradier API integration."""
     
-    def __init__(self, api_key: str = None):
-        self.api_key = api_key or settings.tradier_api_key
+    def __init__(self):
+        self.tradier_api_access_token = settings.tradier_api_access_token
         self.base_url = settings.tradier_base_url
         
         self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {self.tradier_api_access_token}",
             "Accept": "application/json"
         }
         
@@ -105,7 +105,7 @@ class TradierClient:
         self, 
         symbol: str, 
         interval: str = "daily", 
-        start: date = datetime.now().date() - datetime.timedelta(days=90), # default to 90 days prior to today, format to YYYY-MM-DD
+        start: date = datetime.now().date() - timedelta(days=90), # default to 90 days prior to today, format to YYYY-MM-DD
         end: date = datetime.now().date() # default to today, format to YYYY-MM-DD
     ) -> List[OHLCV]:
         """Get historical OHLCV data for a symbol."""
