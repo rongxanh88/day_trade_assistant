@@ -27,6 +27,7 @@ from src.data.models import (
 )
 from src.integrations.tradier_client import tradier_client
 from src.utils.database import db_manager
+from config.sp500_symbols import get_sp500_symbols
 # from config.settings import settings
 
 
@@ -42,8 +43,22 @@ async def update_daily_market_data(state: TradingState) -> TradingState:
     """
     logger.info("Starting daily market data update...")
     
-    # Default watchlist - in production this would come from user preferences
-    default_watchlist = ["SPY", "QQQ", "IWM", "AAPL", "TSLA", "NVDA", "MSFT", "AMZN"]
+    # Get complete S&P 500 symbols list
+    sp500_symbols = get_sp500_symbols()
+    
+    if not sp500_symbols:
+        logger.error("No S&P 500 symbols found in configuration")
+        updated_state = state.copy()
+        updated_state["workflow_status"] = "error"
+        updated_state["last_error"] = "No S&P 500 symbols found in configuration"
+        updated_state["messages"].append({
+            "timestamp": datetime.now(),
+            "type": "error",
+            "message": "No S&P 500 symbols found in configuration"
+        })
+        return updated_state
+    
+    logger.info(f"Loaded {len(sp500_symbols)} S&P 500 symbols for market data update")
     
     # Calculate date range for the past year
     end_date = date.today()
@@ -54,16 +69,16 @@ async def update_daily_market_data(state: TradingState) -> TradingState:
     updated_state["messages"].append({
         "timestamp": datetime.now(),
         "type": "info",
-        "message": f"Starting market data update for {len(default_watchlist)} symbols"
+        "message": f"Starting market data update for {len(sp500_symbols)} S&P 500 symbols"
     })
     
     try:
         symbols_updated = 0
         total_records_fetched = 0
         
-        for symbol in default_watchlist:
+        for idx, symbol in enumerate(sp500_symbols, 1):
             try:
-                logger.info(f"Checking market data for {symbol}...")
+                logger.info(f"[{idx}/{len(sp500_symbols)}] Checking market data for {symbol}...")
                 
                 # Get existing data dates from database
                 existing_dates = await db_manager.get_existing_data_dates(symbol, start_date, end_date)
@@ -120,6 +135,16 @@ async def update_daily_market_data(state: TradingState) -> TradingState:
                 
                 symbols_updated += 1
                 
+                # Add progress update every 50 symbols
+                if idx % 50 == 0:
+                    progress_message = f"Progress: {idx}/{len(sp500_symbols)} symbols processed ({symbols_updated} updated, {total_records_fetched} records fetched)"
+                    logger.info(progress_message)
+                    updated_state["messages"].append({
+                        "timestamp": datetime.now(),
+                        "type": "info",
+                        "message": progress_message
+                    })
+                
             except Exception as e:
                 logger.error(f"Failed to update market data for {symbol}: {e}")
                 updated_state["messages"].append({
@@ -136,10 +161,10 @@ async def update_daily_market_data(state: TradingState) -> TradingState:
         updated_state["messages"].append({
             "timestamp": datetime.now(),
             "type": "success",
-            "message": f"Market data update completed. {symbols_updated} symbols processed, {total_records_fetched} new records fetched."
+            "message": f"S&P 500 market data update completed. {symbols_updated}/{len(sp500_symbols)} symbols processed, {total_records_fetched} new records fetched."
         })
         
-        logger.info(f"Market data update completed successfully. {total_records_fetched} new records fetched.")
+        logger.info(f"S&P 500 market data update completed successfully. {symbols_updated}/{len(sp500_symbols)} symbols processed, {total_records_fetched} new records fetched.")
         return updated_state
         
     except Exception as e:
@@ -164,13 +189,13 @@ async def notify_user(state: TradingState) -> TradingState:
     
     # Create summary message
     if state["workflow_status"] == "market_data_updated":
-        summary = "✅ Market data update completed successfully!"
+        summary = "✅ S&P 500 market data update completed successfully!"
         if state["messages"]:
             latest_message = state["messages"][-1]
             if latest_message.get("type") == "success":
                 summary += f"\n{latest_message['message']}"
     else:
-        summary = "❌ Market data update encountered issues."
+        summary = "❌ S&P 500 market data update encountered issues."
         if state.get("last_error"):
             summary += f"\nError: {state['last_error']}"
     
@@ -344,12 +369,12 @@ async def run_market_scan_example():
         # Run the workflow
         result = await app.ainvoke(initial_state)
         
-        # # Print results
-        # print("\n" + "="*50)
-        # print("MARKET SCAN RESULTS")
-        # print("="*50)
+        # Print results
+        print("\n" + "="*50)
+        print("MARKET SCAN RESULTS")
+        print("="*50)
         
-        # print(f"Workflow Status: {result['workflow_status']}")
+        print(f"Workflow Status: {result['workflow_status']}")
         # print(f"Symbols Scanned: {', '.join(result['watchlist'])}")
         # print(f"Setups Found: {len(result['active_setups'])}")
         # print(f"Alerts Sent: {len(result['alerts_sent'])}")
@@ -367,7 +392,7 @@ async def run_market_scan_example():
         #     for alert in result['alerts_sent']:
         #         print(f"  📱 {alert.symbol} - {alert.alert_level.value.upper()}")
         
-        # print("="*50)
+        print("="*50)
         return result
         
     except Exception as e:
