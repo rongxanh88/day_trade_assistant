@@ -23,32 +23,6 @@ A LangGraph-powered trading assistant that identifies high-probability setups wh
 - **Swing Trend Trades**: price action + trending with entire stock market direction + relative strength/weakness to overall market
 - **Day Trades**: price action + relative strength/weakness to overall market + Long on stock above yesterday's high / Short a stock below yesterday's low
 
-## 🔄 LangGraph State Management
-
-### Global State Schema
-```python
-class TradingState(TypedDict):
-    # Market Data
-    current_positions: List[Position]
-    watchlist: List[str]
-    market_hours: MarketHours
-    
-    # Analysis Results
-    active_setups: List[TradingSetup]
-    risk_metrics: RiskMetrics
-    performance_history: List[PastTrade]
-    
-    # User Preferences
-    risk_tolerance: float
-    preferred_strategies: List[str]
-    account_size: float
-    
-    # Workflow Control
-    scan_frequency: int
-    last_scan_time: datetime
-    alerts_sent: List[Alert]
-```
-
 ### Key LangGraph Features to Leverage
 - **Checkpointing**: Persist state across market sessions
 - **Human-in-the-loop**: Review setups before alerts
@@ -98,7 +72,6 @@ class TradingState(TypedDict):
 
 ### Integration
 - **Tradier SDK**: Market data and account info
-- **Websockets**: Real-time data streams
 - **APScheduler**: Scheduled scans
 - **Pydantic**: Data validation
 
