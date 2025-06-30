@@ -60,10 +60,11 @@ class TradingState(TypedDict):
 
 ### Phase 1: Foundation (Week 1)
 - [x] Project structure setup
-- [ ] Tradier API integration
-- [ ] Basic LangGraph workflow
-- [ ] Simple market data retrieval
-- [ ] State management setup
+- [x] Tradier API integration - Only Historical Data
+- [x] Basic LangGraph workflow
+- [x] Simple market data retrieval
+- [x] State management setup
+- [ ] Temporary: Ask agent questions using daily market data
 
 ### Phase 2: Core Analysis (Week 2)
 - [ ] Technical indicator calculations
