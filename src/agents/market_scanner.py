@@ -16,6 +16,7 @@ from typing import Dict, List, Any
 
 from langgraph.graph import StateGraph, END, START
 from langchain_core.tools import tool
+from langchain.chat_models import init_chat_model
 
 from src.data.models import (
     TradingState,
@@ -28,7 +29,7 @@ from src.data.models import (
 from src.integrations.tradier_client import tradier_client
 from src.utils.database import db_manager
 from config.sp500_symbols import get_sp500_symbols
-# from config.settings import settings
+from config.settings import settings
 
 
 logger = logging.getLogger(__name__)
@@ -177,6 +178,25 @@ async def update_daily_market_data(state: TradingState) -> TradingState:
             "message": f"Market data update failed: {str(e)}"
         })
         return updated_state
+    
+async def chatbot(state: TradingState) -> TradingState:
+    """
+    Chatbot agent that can answer questions about the market data.
+    """
+    logger.info("Starting chatbot...")
+    
+    llm = init_chat_model(
+        model="google_genai:" + settings.default_model
+    )
+    
+    updated_state = state.copy()
+    
+    # Get the latest message and generate a response
+    if "agent_messages" in updated_state and updated_state["agent_messages"]:
+        response = llm.invoke(updated_state["agent_messages"])
+        updated_state["agent_messages"].append(response)
+    
+    return updated_state
 
 
 async def notify_user(state: TradingState) -> TradingState:
@@ -216,39 +236,6 @@ async def notify_user(state: TradingState) -> TradingState:
     return updated_state
 
 
-# Conditional routing functions
-# def should_continue_scanning(state: TradingState) -> str:
-#     """Decide whether to continue based on market hours."""
-#     if state.get("workflow_status") == "market_closed":
-#         return "wait"
-#     elif state.get("last_error"):
-#         return "error"
-#     else:
-#         return "scan"
-
-
-# def route_after_scan(state: TradingState) -> str:
-#     """Route based on scan results."""
-#     status = state.get("workflow_status")
-#     if status == "setups_found":
-#         return "review"
-#     elif status == "no_setups":
-#         return "complete"
-#     else:
-#         return "error"
-
-
-# def route_after_review(state: TradingState) -> str:
-#     """Route based on review results."""
-#     status = state.get("workflow_status")
-#     if status == "setups_approved":
-#         return "alert"
-#     elif status == "no_review_needed":
-#         return "complete"
-#     else:
-#         return "wait_for_human"
-
-
 # Build the LangGraph workflow
 def create_market_scanner_graph() -> StateGraph:
     """Create the market scanner LangGraph workflow."""
@@ -258,55 +245,16 @@ def create_market_scanner_graph() -> StateGraph:
     
     # Add nodes (these are the workflow steps)
     workflow.add_node("update_daily_market_data", update_daily_market_data)
+    workflow.add_node("chatbot", chatbot)
     workflow.add_node("notify_user", notify_user)
-    # workflow.add_node("check_market", check_market_hours)
-    # workflow.add_node("fetch_data", fetch_watchlist_data)
-    # workflow.add_node("scan_setups", scan_for_setups)
-    # workflow.add_node("review_setups", review_setups)
-    # workflow.add_node("send_alerts", send_alerts)
     
     # Add edges (workflow routing)
     workflow.add_edge(START, "update_daily_market_data")
-    
-    # Conditional routing from market check
-    # workflow.add_conditional_edges(
-    #     "check_market",
-    #     should_continue_scanning,
-    #     {
-    #         "scan": "fetch_data",
-    #         "wait": END,
-    #         "error": END
-    #     }
-    # )
-    
-    # Linear flow through scanning
-    # workflow.add_edge("fetch_data", "scan_setups")
-    
-    # Conditional routing after scan
-    # workflow.add_conditional_edges(
-    #     "scan_setups",
-    #     route_after_scan,
-    #     {
-    #         "review": "review_setups",
-    #         "complete": END,
-    #         "error": END
-    #     }
-    # )
-    
-    # Conditional routing after review
-    # workflow.add_conditional_edges(
-    #     "review_setups", 
-    #     route_after_review,
-    #     {
-    #         "alert": "send_alerts",
-    #         "complete": END,
-    #         "wait_for_human": END  # In real app, this would pause
-    #     }
-    # )
-    
+    workflow.add_edge("update_daily_market_data", "chatbot")
+    workflow.add_edge("chatbot", END)
+
     # End after alerts
-    workflow.add_edge("notify_user", END)
-    # workflow.add_edge("send_alerts", END)
+    # workflow.add_edge("notify_user", END)
     
     return workflow
 
@@ -345,7 +293,10 @@ def create_market_scanner(watchlist: List[str] = None) -> StateGraph:
         # Messages and Logs
         "messages": [],
         "workflow_status": "initializing",
-        "last_error": None
+        "last_error": None,
+        
+        # Chat Messages for LLM
+        "agent_messages": []
     }
     
     return graph, initial_state
@@ -353,10 +304,10 @@ def create_market_scanner(watchlist: List[str] = None) -> StateGraph:
 
 # Example usage function
 async def run_market_scan_example():
+    """Example of how to run the market scanner."""
     # Ensure database tables exist
     await db_manager.create_tables()
-
-    """Example of how to run the market scanner."""
+    
     logger.info("Starting market scanner example...")
     
     # Create the graph and initial state
@@ -366,39 +317,72 @@ async def run_market_scan_example():
     app = graph.compile()
     
     try:
-        # Run the workflow
-        result = await app.ainvoke(initial_state)
+        print("🚀 Starting market data update...")
+        print("This may take a few minutes for S&P 500 data...")
         
-        # Print results
-        print("\n" + "="*50)
-        print("MARKET SCAN RESULTS")
-        print("="*50)
+        # Run the initial workflow (market data update)
+        current_state = await app.ainvoke(initial_state)
         
-        print(f"Workflow Status: {result['workflow_status']}")
-        # print(f"Symbols Scanned: {', '.join(result['watchlist'])}")
-        # print(f"Setups Found: {len(result['active_setups'])}")
-        # print(f"Alerts Sent: {len(result['alerts_sent'])}")
+        print("\n✅ Market data update completed!")
+        print("🤖 Chat Bot Ready!")
+        print("Ask me about market conditions, trading strategies, or type 'quit' to exit.\n")
         
-        # if result['active_setups']:
-        #     print("\nSETUPS FOUND:")
-        #     for setup in result['active_setups']:
-        #         print(f"  • {setup.symbol}: {setup.confidence_score:.1f}% confidence")
-        #         print(f"    Entry: ${setup.entry_price:.2f} | Target: ${setup.target_price:.2f} | Stop: ${setup.stop_loss:.2f}")
-        #         print(f"    Reasoning: {setup.reasoning}")
-        #         print()
+        # Create a simple chat-only graph for subsequent interactions
+        chat_workflow = StateGraph(TradingState)
+        chat_workflow.add_node("chatbot", chatbot)
+        chat_workflow.add_edge(START, "chatbot")
+        chat_workflow.add_edge("chatbot", END)
+        chat_app = chat_workflow.compile()
         
-        # if result['alerts_sent']:
-        #     print("ALERTS SENT:")
-        #     for alert in result['alerts_sent']:
-        #         print(f"  📱 {alert.symbol} - {alert.alert_level.value.upper()}")
+        # Chat loop
+        while True:
+            try:
+                user_input = input("User: ")
+                if user_input.lower() in ["q", "quit", "exit"]:
+                    print("Exiting chat...")
+                    break
+                
+                # Add user message to state
+                current_state["agent_messages"].append({"role": "user", "content": user_input})
+                
+                # Run chat-only workflow
+                current_state = await chat_app.ainvoke(current_state)
+                
+                # Display response
+                if current_state["agent_messages"]:
+                    last_message = current_state["agent_messages"][-1]
+                    if hasattr(last_message, 'content'):
+                        print("Assistant:", last_message.content)
+                    elif isinstance(last_message, dict) and 'content' in last_message:
+                        print("Assistant:", last_message['content'])
+                    else:
+                        print("Assistant:", str(last_message))
+                
+            except KeyboardInterrupt:
+                print("\nExiting chat...")
+                break
+            except Exception as e:
+                print(f"Error during chat: {e}")
+                # Try with a default message to test the system
+                user_input = "What is the current market condition?"
+                print(f"Trying with default message: {user_input}")
+                current_state["agent_messages"].append({"role": "user", "content": user_input})
+                current_state = await chat_app.ainvoke(current_state)
+                if current_state["agent_messages"]:
+                    last_message = current_state["agent_messages"][-1]
+                    if hasattr(last_message, 'content'):
+                        print("Assistant:", last_message.content)
+                    elif isinstance(last_message, dict) and 'content' in last_message:
+                        print("Assistant:", last_message['content'])
+                    else:
+                        print("Assistant:", str(last_message))
+                break
         
-        print("="*50)
-        return result
+        return current_state
         
     except Exception as e:
-        logger.error(f"Market scan failed: {e}")
+        logger.error(f"Market scanner failed: {e}")
         raise
-
 
 if __name__ == "__main__":
     # Run the example
