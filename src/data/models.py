@@ -2,6 +2,8 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any, TypedDict
 from enum import Enum
 from pydantic import BaseModel, Field
+from langgraph.graph.message import add_messages
+from typing import Annotated
 
 
 # Enums for various trading concepts
@@ -177,6 +179,9 @@ class Alert(BaseModel):
 # LangGraph State Schema
 class TradingState(TypedDict):
     """Main state schema for LangGraph workflows."""
+
+    # Agent State
+    agent_messages: Annotated[List, add_messages]
     
     # Market Data
     market_condition: MarketCondition

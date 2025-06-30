@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     # LLM Configuration
     # openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
     # anthropic_api_key: Optional[str] = Field(default=None, env="ANTHROPIC_API_KEY")
-    # default_model: str = Field(default="gpt-4-1106-preview", env="DEFAULT_MODEL")
+    google_api_key: str = Field(default="", env="GOOGLE_API_KEY")
+    default_model: str = Field(default="gemini-2.5-flash", env="DEFAULT_MODEL")
     
     # Database Configuration
     database_url: str = Field(
