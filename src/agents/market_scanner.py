@@ -181,57 +181,58 @@ async def update_daily_market_data(state: TradingState) -> TradingState:
     
 async def chatbot(state: TradingState) -> TradingState:
     """
-    Chatbot agent that can answer questions about the market data.
+    Chatbot agent that can answer questions about the market data and handle market data updates.
     """
     logger.info("Starting chatbot...")
     
+    updated_state = state.copy()
+    
+    # Check if user is asking for market data update
+    if "agent_messages" in updated_state and updated_state["agent_messages"]:
+        latest_user_message = updated_state["agent_messages"][-1]
+        user_content = ""
+        
+        if isinstance(latest_user_message, dict) and 'content' in latest_user_message:
+            user_content = latest_user_message['content'].lower()
+        elif hasattr(latest_user_message, 'content'):
+            user_content = latest_user_message.content.lower()
+        
+        # Check if user is requesting market data update
+        update_keywords = ['update market data', 'refresh market data', 'update data', 'fetch market data', 'download market data']
+        if any(keyword in user_content for keyword in update_keywords):
+            logger.info("User requested market data update, executing...")
+            
+            # Add notification that update is starting
+            updated_state["agent_messages"].append({
+                "role": "assistant", 
+                "content": "🚀 Starting S&P 500 market data update... This may take a few minutes."
+            })
+            
+            # Run the market data update
+            updated_state = await update_daily_market_data(updated_state)
+            
+            # Add completion message
+            if updated_state.get("workflow_status") == "market_data_updated":
+                completion_msg = "✅ Market data update completed successfully! You can now ask questions about the latest market data."
+            else:
+                completion_msg = f"❌ Market data update failed: {updated_state.get('last_error', 'Unknown error')}"
+            
+            updated_state["agent_messages"].append({
+                "role": "assistant", 
+                "content": completion_msg
+            })
+            
+            return updated_state
+    
+    # Regular chatbot functionality
     llm = init_chat_model(
         model="google_genai:" + settings.default_model
     )
-    
-    updated_state = state.copy()
     
     # Get the latest message and generate a response
     if "agent_messages" in updated_state and updated_state["agent_messages"]:
         response = llm.invoke(updated_state["agent_messages"])
         updated_state["agent_messages"].append(response)
-    
-    return updated_state
-
-
-async def notify_user(state: TradingState) -> TradingState:
-    """
-    Notify user of workflow completion and results.
-    """
-    logger.info("Notifying user of workflow completion...")
-    
-    updated_state = state.copy()
-    
-    # Create summary message
-    if state["workflow_status"] == "market_data_updated":
-        summary = "✅ S&P 500 market data update completed successfully!"
-        if state["messages"]:
-            latest_message = state["messages"][-1]
-            if latest_message.get("type") == "success":
-                summary += f"\n{latest_message['message']}"
-    else:
-        summary = "❌ S&P 500 market data update encountered issues."
-        if state.get("last_error"):
-            summary += f"\nError: {state['last_error']}"
-    
-    updated_state["workflow_status"] = "completed"
-    updated_state["messages"].append({
-        "timestamp": datetime.now(),
-        "type": "notification",
-        "message": summary
-    })
-    
-    # In a real application, this would send notifications via:
-    # - Email
-    # - Slack/Discord webhook
-    # - Push notifications
-    # - WebSocket to frontend
-    logger.info(f"User notification: {summary}")
     
     return updated_state
 
@@ -246,15 +247,12 @@ def create_market_scanner_graph() -> StateGraph:
     # Add nodes (these are the workflow steps)
     workflow.add_node("update_daily_market_data", update_daily_market_data)
     workflow.add_node("chatbot", chatbot)
-    workflow.add_node("notify_user", notify_user)
     
     # Add edges (workflow routing)
-    workflow.add_edge(START, "update_daily_market_data")
-    workflow.add_edge("update_daily_market_data", "chatbot")
+    workflow.add_edge(START, "chatbot")
     workflow.add_edge("chatbot", END)
 
     # End after alerts
-    # workflow.add_edge("notify_user", END)
     
     return workflow
 
@@ -317,22 +315,11 @@ async def run_market_scan_example():
     app = graph.compile()
     
     try:
-        print("🚀 Starting market data update...")
-        print("This may take a few minutes for S&P 500 data...")
+        print("🤖 Market Scanner Chat Bot Ready!")
+        print("Ask me about market conditions, trading strategies, or say 'update market data' to refresh data.")
+        print("Type 'quit' to exit.\n")
         
-        # Run the initial workflow (market data update)
-        current_state = await app.ainvoke(initial_state)
-        
-        print("\n✅ Market data update completed!")
-        print("🤖 Chat Bot Ready!")
-        print("Ask me about market conditions, trading strategies, or type 'quit' to exit.\n")
-        
-        # Create a simple chat-only graph for subsequent interactions
-        chat_workflow = StateGraph(TradingState)
-        chat_workflow.add_node("chatbot", chatbot)
-        chat_workflow.add_edge(START, "chatbot")
-        chat_workflow.add_edge("chatbot", END)
-        chat_app = chat_workflow.compile()
+        current_state = initial_state
         
         # Chat loop
         while True:
@@ -345,18 +332,19 @@ async def run_market_scan_example():
                 # Add user message to state
                 current_state["agent_messages"].append({"role": "user", "content": user_input})
                 
-                # Run chat-only workflow
-                current_state = await chat_app.ainvoke(current_state)
+                # Run workflow
+                current_state = await app.ainvoke(current_state)
                 
-                # Display response
+                # Display response(s) - there might be multiple messages from market data updates
                 if current_state["agent_messages"]:
-                    last_message = current_state["agent_messages"][-1]
-                    if hasattr(last_message, 'content'):
-                        print("Assistant:", last_message.content)
-                    elif isinstance(last_message, dict) and 'content' in last_message:
-                        print("Assistant:", last_message['content'])
-                    else:
-                        print("Assistant:", str(last_message))
+                    # Get all new messages (everything after the user message we just added)
+                    new_messages = current_state["agent_messages"][-(len(current_state["agent_messages"]) - len(initial_state.get("agent_messages", []))):]
+                    
+                    for message in new_messages:
+                        if isinstance(message, dict) and message.get("role") == "assistant":
+                            print("Assistant:", message["content"])
+                        elif hasattr(message, 'content') and hasattr(message, 'type'):
+                            print("Assistant:", message.content)
                 
             except KeyboardInterrupt:
                 print("\nExiting chat...")
@@ -364,10 +352,10 @@ async def run_market_scan_example():
             except Exception as e:
                 print(f"Error during chat: {e}")
                 # Try with a default message to test the system
-                user_input = "What is the current market condition?"
+                user_input = "What can you help me with?"
                 print(f"Trying with default message: {user_input}")
                 current_state["agent_messages"].append({"role": "user", "content": user_input})
-                current_state = await chat_app.ainvoke(current_state)
+                current_state = await app.ainvoke(current_state)
                 if current_state["agent_messages"]:
                     last_message = current_state["agent_messages"][-1]
                     if hasattr(last_message, 'content'):
