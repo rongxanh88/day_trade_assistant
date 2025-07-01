@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
+    # LangGraph Configuration
+    langsmith_tracing: bool = Field(default=False, env="LANGSMITH_TRACING")
+    langsmith_endpoint: str = Field(default="https://api.smith.langchain.com", env="LANGSMITH_ENDPOINT")
+    langsmith_api_key: str = Field(default="", env="LANGSMITH_API_KEY")
+    langsmith_project: str = Field(default="day-trade-assistant", env="LANGSMITH_PROJECT")
+
 
 # Global settings instance
 settings = Settings()
