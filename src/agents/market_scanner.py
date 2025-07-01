@@ -24,7 +24,7 @@ from src.data.models import (
     # Quote
 )
 from src.utils.database import db_manager
-from src.agents.utils.nodes import update_daily_market_data, chatbot
+from src.agents.utils.nodes import chatbot
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,6 @@ def create_market_scanner_graph() -> StateGraph:
     workflow = StateGraph(TradingState)
     
     # Add nodes (these are the workflow steps)
-    workflow.add_node("update_daily_market_data", update_daily_market_data)
     workflow.add_node("chatbot", chatbot)
     
     # Add edges (workflow routing)
@@ -108,8 +107,8 @@ async def run_market_scan_example():
     
     try:
         print("🤖 Market Scanner Chat Bot Ready!")
-        print("Ask me about market conditions, trading strategies, or say 'update market data' to refresh data.")
-        print("Type 'quit' to exit.\n")
+        print("Ask me about market conditions, trading strategies, or request market data updates.")
+        print("The AI will automatically use tools when needed. Type 'quit' to exit.\n")
         
         current_state = initial_state
         
