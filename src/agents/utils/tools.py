@@ -1,10 +1,12 @@
 import logging
 from datetime import datetime, date, timedelta
+from typing import List
 from langchain_core.tools import tool
 
 from config.sp500_symbols import get_sp500_symbols
 from src.integrations.tradier_client import tradier_client
 from src.utils.database import db_manager
+from config.sp500_symbols import get_sp500_symbols
 
 logger = logging.getLogger(__name__)
 
@@ -118,3 +120,112 @@ async def update_market_data() -> str:
         error_msg = f"❌ Market data update failed: {str(e)}"
         logger.error(error_msg)
         return error_msg
+
+
+@tool
+async def get_symbol_data(symbol: str, days: int = 50) -> str:
+    """Retrieve recent market data for a specific stock symbol.
+    
+    This tool gets the most recent daily OHLCV (Open, High, Low, Close, Volume) data
+    for a specific stock symbol from our database. Use this when the user asks about
+    a specific stock or wants to analyze price movements, trends, or performance.
+    
+    Args:
+        symbol: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'TSLA')
+        days: Number of recent trading days to retrieve (default: 50, max: 252)
+        
+    Returns:
+        Formatted string containing the market data and basic analysis summary
+    """
+    logger.info(f"Retrieving market data for {symbol} ({days} days)")
+    
+    # Clean and validate symbol
+    symbol = symbol.upper().strip()
+    
+    # Limit days to reasonable range
+    days = max(1, min(days, 252))  # 1 day to 1 year of trading days
+    
+    # Validate symbol is in our supported list
+    sp500_symbols = get_sp500_symbols()
+    if symbol not in sp500_symbols:
+        return f"❌ Symbol '{symbol}' is not found in our S&P 500 database. Available symbols include major stocks like AAPL, MSFT, TSLA, etc."
+    
+    try:
+        # Get market data from database
+        market_data = await db_manager.get_recent_market_data(symbol, days)
+        
+        if not market_data:
+            return f"❌ No market data found for {symbol}. Try running a market data update first."
+        
+        # Format the data for LLM context
+        formatted_data = _format_market_data_for_context(market_data, symbol, days)
+        
+        logger.info(f"Successfully retrieved and formatted {len(market_data)} records for {symbol}")
+        return formatted_data
+        
+    except Exception as e:
+        error_msg = f"❌ Failed to retrieve data for {symbol}: {str(e)}"
+        logger.error(error_msg)
+        return error_msg
+
+# TODO: Change the format of the data to be more accurate and useful for the LLM
+def _format_market_data_for_context(market_data: List, symbol: str, requested_days: int) -> str:
+    """Format market data for LLM context in a readable and analysis-friendly way."""
+    
+    if not market_data:
+        return f"No data available for {symbol}"
+    
+    # Sort by date ascending for chronological analysis
+    sorted_data = sorted(market_data, key=lambda x: x.date)
+    latest_data = sorted_data[-1]  # Most recent
+    oldest_data = sorted_data[0]   # Oldest in range
+    
+    # Calculate basic metrics
+    latest_price = latest_data.close
+    period_start_price = oldest_data.close
+    price_change = latest_price - period_start_price
+    price_change_pct = (price_change / period_start_price) * 100
+    
+    # Find period high/low
+    period_high = max(data.high for data in market_data)
+    period_low = min(data.low for data in market_data)
+    
+    # Calculate average volume
+    avg_volume = sum(data.volume for data in market_data) / len(market_data)
+    
+    # Start building the formatted context
+    context = f"""
+📊 MARKET DATA FOR {symbol}
+Period: {oldest_data.date} to {latest_data.date} ({len(market_data)} trading days)
+
+💰 PRICE SUMMARY:
+• Current Price: ${latest_price:.2f}
+• Period Start: ${period_start_price:.2f}
+• Change: ${price_change:+.2f} ({price_change_pct:+.1f}%)
+• Period High: ${period_high:.2f}
+• Period Low: ${period_low:.2f}
+• Average Volume: {avg_volume:,.0f}
+
+📈 RECENT DAILY DATA (Last 10 days):"""
+    
+    # Add last 10 days of detailed data
+    recent_data = sorted_data[-10:]
+    for data in reversed(recent_data):  # Most recent first
+        daily_change = data.close - data.open
+        daily_change_pct = (daily_change / data.open) * 100 if data.open != 0 else 0
+        
+        context += f"""
+{data.date}: Open ${data.open:.2f} | High ${data.high:.2f} | Low ${data.low:.2f} | Close ${data.close:.2f} | Vol {data.volume:,} | Daily {daily_change:+.2f} ({daily_change_pct:+.1f}%)"""
+    
+    # Add analysis hints for the LLM
+    context += f"""
+
+🔍 KEY INSIGHTS:
+• Volatility: Period range of ${period_high - period_low:.2f} ({((period_high - period_low) / period_low) * 100:.1f}% of low)
+• Trend Direction: {'📈 Upward' if price_change > 0 else '📉 Downward' if price_change < 0 else '➡️ Sideways'}
+• Recent Performance: {price_change_pct:+.1f}% over {len(market_data)} days
+
+This data can be used to analyze trends, calculate technical indicators, assess volatility, and answer questions about {symbol}'s recent performance.
+"""
+    
+    return context

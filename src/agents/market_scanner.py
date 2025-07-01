@@ -62,6 +62,10 @@ def create_market_scanner(watchlist: List[str] = None) -> StateGraph:
         # Analysis Results
         "latest_quotes": {},
         "technical_indicators": {},
+        
+        # Current Symbol Context
+        "current_symbol": None,
+        "current_symbol_data": None,
 
         # User Preferences
         "risk_tolerance": 1.0,
@@ -107,7 +111,11 @@ async def run_market_scan_example():
     
     try:
         print("🤖 Market Scanner Chat Bot Ready!")
-        print("Ask me about market conditions, trading strategies, or request market data updates.")
+        print("I can help you with:")
+        print("• Analyze specific stocks (e.g., 'How has AAPL performed recently?')")
+        print("• Update market data from Tradier API")
+        print("• Answer trading and market questions")
+        print("• Compare stocks and identify trends")
         print("The AI will automatically use tools when needed. Type 'quit' to exit.\n")
         
         current_state = initial_state

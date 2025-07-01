@@ -200,6 +200,31 @@ class DatabaseManager:
                 logger.error(f"Failed to batch insert market data for {symbol}: {e}")
                 raise
     
+    async def get_recent_market_data(self, symbol: str, days: int = 50) -> List[DailyMarketData]:
+        """Get recent market data for a specific symbol.
+        
+        Args:
+            symbol: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+            days: Number of recent trading days to retrieve
+            
+        Returns:
+            List of DailyMarketData records, ordered by date descending (most recent first)
+        """
+        async with self.async_session() as session:
+            try:
+                result = await session.execute(
+                    select(DailyMarketData)
+                    .where(DailyMarketData.symbol == symbol.upper())
+                    .order_by(DailyMarketData.date.desc())
+                    .limit(days)
+                )
+                records = result.scalars().all()
+                logger.info(f"Retrieved {len(records)} records for {symbol}")
+                return list(records)
+            except Exception as e:
+                logger.error(f"Failed to retrieve market data for {symbol}: {e}")
+                raise
+
     async def close(self):
         """Close the database engine."""
         await self.engine.dispose()

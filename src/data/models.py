@@ -190,6 +190,10 @@ class TradingState(TypedDict):
     latest_quotes: Dict[str, Quote]
     technical_indicators: Dict[str, TechnicalIndicators]
     
+    # Current Symbol Context
+    current_symbol: Optional[str]  # Currently analyzed symbol
+    current_symbol_data: Optional[str]  # Formatted market data context
+    
     # User Preferences
     risk_tolerance: float
     preferred_strategies: List[SetupType]

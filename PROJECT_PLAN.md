@@ -38,7 +38,7 @@ A LangGraph-powered trading assistant that identifies high-probability setups wh
 - [x] Basic LangGraph workflow
 - [x] Simple market data retrieval
 - [x] State management setup
-- [ ] Temporary: Ask agent questions using daily market data
+- [x] Temporary: Ask agent questions using daily market data
 
 ### Phase 2: Core Analysis (Week 2)
 - [ ] Technical indicator calculations
