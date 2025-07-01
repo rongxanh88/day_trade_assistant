@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, date, timedelta
 from langchain.chat_models import init_chat_model
 
@@ -6,6 +7,8 @@ from config.settings import settings
 from src.integrations.tradier_client import tradier_client
 from src.data.models import TradingState
 from src.utils.database import db_manager
+
+logger = logging.getLogger(__name__)
 
 # LangGraph node functions
 async def update_daily_market_data(state: TradingState) -> TradingState:

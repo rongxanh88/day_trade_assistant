@@ -13,3 +13,6 @@ tests/fixtures/vcr_cassettes/
 
 # Setup Guides
 LANGGRAPH_STUDIO_SETUP.md
+
+# everything in the .langgraph_api folder
+.langgraph_api/
