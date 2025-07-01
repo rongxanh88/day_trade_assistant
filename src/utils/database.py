@@ -5,12 +5,11 @@ Database utilities for PostgreSQL operations.
 import logging
 from datetime import datetime, date
 from typing import List
-from sqlalchemy import Column, String, Float, Integer, Date, DateTime, UniqueConstraint, Index, text
+from sqlalchemy import Column, String, Float, Integer, Date, DateTime, UniqueConstraint, Index
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import select, and_
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.exc import ProgrammingError
 from config.settings import settings
 from src.data.models import OHLCV
 import asyncpg

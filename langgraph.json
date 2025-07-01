@@ -1,0 +1,11 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "market_scanner": {
+      "path": "src.agents.market_scanner:create_market_scanner_graph",
+      "description": "Day Trading Assistant - Market Scanner workflow for identifying trading setups and analyzing market conditions"
+    }
+  },
+  "env": ".env",
+  "python_version": "3.11"
+}

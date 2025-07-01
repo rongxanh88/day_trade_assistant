@@ -10,3 +10,6 @@ tests/__pycache__/
 
 # everything in the tests/fixtures/vcr_cassettes/
 tests/fixtures/vcr_cassettes/
+
+# Setup Guides
+LANGGRAPH_STUDIO_SETUP.md
