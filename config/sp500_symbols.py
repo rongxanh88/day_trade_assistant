@@ -44,7 +44,7 @@ SP500_SYMBOLS = [
   'UHS', 'VLO', 'VTR', 'VLTO', 'VRSN', 'VRSK', 'VZ', 'VRTX', 'VTRS', 'VICI', 'V', 'VST',
   'VMC', 'WRB', 'GWW', 'WAB', 'WBA', 'WMT', 'DIS', 'WBD', 'WM', 'WAT', 'WEC', 'WFC',
   'WELL', 'WST', 'WDC', 'WY', 'WSM', 'WMB', 'WTW', 'WDAY', 'WYNN', 'XEL', 'XYL', 'YUM',
-  'ZBRA', 'ZBH', 'ZTS', 'SPY', 'QQQ', 'IWM'
+  'ZBRA', 'ZBH', 'ZTS', 'SPY', 'QQQ', 'IWM', 'DDOG', 'APP', 'RDDT'
 ]
 
 
