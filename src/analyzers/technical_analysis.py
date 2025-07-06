@@ -28,7 +28,7 @@ def calculate_sma(prices: List[float], period: int) -> Optional[float]:
     
     # Take the last 'period' prices and calculate average
     recent_prices = prices[-period:]
-    return sum(recent_prices) / len(recent_prices)
+    return round(sum(recent_prices) / len(recent_prices), 2)
 
 
 def calculate_ema(prices: List[float], period: int) -> Optional[float]:
@@ -54,7 +54,7 @@ def calculate_ema(prices: List[float], period: int) -> Optional[float]:
     for price in prices[1:]:
         ema = alpha * price + (1 - alpha) * ema
     
-    return ema
+    return round(ema, 2)
 
 
 def calculate_all_indicators(market_data: List, target_date: date) -> Dict[str, Optional[float]]:
@@ -86,17 +86,20 @@ def calculate_all_indicators(market_data: List, target_date: date) -> Dict[str, 
         # Ensure data is sorted by date
         df = df.sort_values('date').reset_index(drop=True)
         
+        # Convert target_date to string for comparison (since dates are stored as ISO strings)
+        target_date_str = target_date.isoformat() if hasattr(target_date, 'isoformat') else str(target_date)
+        
         # Find the row for the target date
-        target_row = df[df['date'] == target_date]
+        target_row = df[df['date'] == target_date_str]
         if target_row.empty:
-            logger.warning(f"No data found for target date {target_date}")
+            logger.warning(f"No data found for target date {target_date_str}")
             return _get_empty_indicators()
         
         target_index = target_row.index[0]
-        
+
         # Get prices up to and including the target date
         prices_up_to_target = df.loc[:target_index, 'close'].tolist()
-        
+
         # Calculate all indicators
         indicators = {}
         
@@ -108,14 +111,6 @@ def calculate_all_indicators(market_data: List, target_date: date) -> Dict[str, 
         # Exponential Moving Averages
         indicators['ema_15'] = calculate_ema(prices_up_to_target, 15)
         indicators['ema_8'] = calculate_ema(prices_up_to_target, 8)
-        
-        # Log the results
-        logger.info(f"Calculated technical indicators for {target_date}: "
-                   f"SMA200={indicators['sma_200']:.2f if indicators['sma_200'] else 'N/A'}, "
-                   f"SMA100={indicators['sma_100']:.2f if indicators['sma_100'] else 'N/A'}, "
-                   f"SMA50={indicators['sma_50']:.2f if indicators['sma_50'] else 'N/A'}, "
-                   f"EMA15={indicators['ema_15']:.2f if indicators['ema_15'] else 'N/A'}, "
-                   f"EMA8={indicators['ema_8']:.2f if indicators['ema_8'] else 'N/A'}")
         
         return indicators
         
