@@ -6,7 +6,7 @@ from langchain.chat_models import init_chat_model
 from langgraph.prebuilt import create_react_agent
 
 from config.settings import settings
-from src.agents.utils.tools import update_market_data, get_symbol_data
+from src.agents.utils.tools import update_market_data, get_symbol_data, update_technical_indicators, get_technical_analysis
 from src.utils.database import db_manager
 
 logger = logging.getLogger(__name__)
@@ -17,23 +17,38 @@ def create_market_scanner():
     llm = init_chat_model(f"google_genai:{settings.default_model}")
     
     # Define available tools
-    tools = [update_market_data, get_symbol_data]
+    tools = [
+        update_market_data, 
+        get_symbol_data, 
+        update_technical_indicators, 
+        get_technical_analysis
+    ]
     
     # Create react agent (returns compiled graph)
     agent = create_react_agent(
         llm, 
         tools,
-        prompt="""You are an expert stock and option trading assistant. 
+        prompt="""You are an expert stock and option trading assistant with advanced technical analysis capabilities. 
         
         You have access to tools to:
         - Update S&P 500 market data from Tradier API
         - Get recent market data for specific symbols
+        - Calculate and update technical indicators (200-day SMA, 100-day SMA, 50-day SMA, 15-day EMA, 8-day EMA)
+        - Get comprehensive technical analysis for specific stocks
         
         Use these tools to help users analyze market data, identify trends, and answer trading questions.
         Be concise, helpful, and data-driven in your responses.
         
-        When users ask about specific stocks, use the get_symbol_data tool to provide current information.
-        If users want to refresh the database, use the update_market_data tool.
+        When users ask about specific stocks, use the get_symbol_data and get_technical_analysis tools 
+        to provide comprehensive information including both price data and technical indicators.
+        
+        When users want to refresh technical indicators, use the update_technical_indicators tool.
+        
+        For technical analysis, focus on:
+        - Moving average support/resistance levels
+        - Trend direction based on price relative to moving averages
+        - Short-term vs long-term trend alignment
+        - Key levels for potential entries and exits
         """
     )
     

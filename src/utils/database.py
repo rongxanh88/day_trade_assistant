@@ -4,7 +4,7 @@ Database utilities for PostgreSQL operations.
 
 import logging
 from datetime import datetime, date
-from typing import List
+from typing import List, Optional
 from sqlalchemy import Column, String, Float, Integer, Date, DateTime, UniqueConstraint, Index
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
@@ -38,6 +38,33 @@ class DailyMarketData(Base):
     __table_args__ = (
         UniqueConstraint('symbol', 'date', name='_symbol_date_uc'),
         Index('idx_symbol', 'symbol'),
+    )
+
+
+class TechnicalIndicators(Base):
+    """Database model for technical indicators."""
+    __tablename__ = "technical_indicators"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(10), nullable=False)
+    date = Column(Date, nullable=False)
+    
+    # Moving Averages
+    sma_200 = Column(Float, nullable=True)
+    sma_100 = Column(Float, nullable=True)
+    sma_50 = Column(Float, nullable=True)
+    ema_15 = Column(Float, nullable=True)
+    ema_8 = Column(Float, nullable=True)
+    
+    # Metadata
+    created_at = Column(DateTime, default=datetime.now())
+    updated_at = Column(DateTime, default=datetime.now(), onupdate=datetime.now())
+    
+    # Ensure unique symbol-date combinations and add index on symbol for fast lookups
+    __table_args__ = (
+        UniqueConstraint('symbol', 'date', name='_tech_symbol_date_uc'),
+        Index('idx_tech_symbol', 'symbol'),
+        Index('idx_tech_date', 'date'),
     )
 
 
@@ -228,6 +255,128 @@ class DatabaseManager:
     async def close(self):
         """Close the database engine."""
         await self.engine.dispose()
+
+    async def get_symbols_with_sufficient_data(self, min_days: int = 200) -> List[str]:
+        """Get symbols that have at least min_days of market data.
+        
+        Args:
+            min_days: Minimum number of days of data required
+            
+        Returns:
+            List of symbols with sufficient data
+        """
+        async with self.async_session() as session:
+            try:
+                # Count records per symbol and filter by minimum days
+                from sqlalchemy import func
+                
+                result = await session.execute(
+                    select(DailyMarketData.symbol)
+                    .group_by(DailyMarketData.symbol)
+                    .having(func.count(DailyMarketData.id) >= min_days)
+                )
+                symbols = [row[0] for row in result.fetchall()]
+                logger.info(f"Found {len(symbols)} symbols with at least {min_days} days of data")
+                return symbols
+            except Exception as e:
+                logger.error(f"Failed to get symbols with sufficient data: {e}")
+                raise
+
+    async def get_existing_technical_indicators(self, symbol: str, target_date: date) -> Optional[TechnicalIndicators]:
+        """Check if technical indicators exist for a symbol and date.
+        
+        Args:
+            symbol: Stock ticker symbol
+            target_date: Date to check for
+            
+        Returns:
+            TechnicalIndicators record if exists, None otherwise
+        """
+        async with self.async_session() as session:
+            try:
+                result = await session.execute(
+                    select(TechnicalIndicators)
+                    .where(
+                        and_(
+                            TechnicalIndicators.symbol == symbol,
+                            TechnicalIndicators.date == target_date
+                        )
+                    )
+                )
+                return result.scalar_one_or_none()
+            except Exception as e:
+                logger.error(f"Failed to check existing technical indicators for {symbol}: {e}")
+                raise
+
+    async def insert_technical_indicators(self, symbol: str, target_date: date, indicators: dict):
+        """Insert or update technical indicators for a symbol and date.
+        
+        Args:
+            symbol: Stock ticker symbol
+            target_date: Date of the indicators
+            indicators: Dictionary containing indicator values
+        """
+        async with self.async_session() as session:
+            try:
+                # Prepare the data for upsert
+                indicator_data = {
+                    'symbol': symbol,
+                    'date': target_date,
+                    'sma_200': indicators.get('sma_200'),
+                    'sma_100': indicators.get('sma_100'),
+                    'sma_50': indicators.get('sma_50'),
+                    'ema_15': indicators.get('ema_15'),
+                    'ema_8': indicators.get('ema_8'),
+                    'created_at': datetime.now(),
+                    'updated_at': datetime.now()
+                }
+                
+                # Use PostgreSQL upsert (INSERT ... ON CONFLICT DO UPDATE)
+                stmt = insert(TechnicalIndicators).values(indicator_data)
+                stmt = stmt.on_conflict_do_update(
+                    constraint='_tech_symbol_date_uc',
+                    set_={
+                        'sma_200': stmt.excluded.sma_200,
+                        'sma_100': stmt.excluded.sma_100,
+                        'sma_50': stmt.excluded.sma_50,
+                        'ema_15': stmt.excluded.ema_15,
+                        'ema_8': stmt.excluded.ema_8,
+                        'updated_at': datetime.now()
+                    }
+                )
+                
+                await session.execute(stmt)
+                await session.commit()
+                logger.info(f"Inserted/updated technical indicators for {symbol} on {target_date}")
+                
+            except Exception as e:
+                await session.rollback()
+                logger.error(f"Failed to insert technical indicators for {symbol}: {e}")
+                raise
+
+    async def get_market_data_for_calculation(self, symbol: str, days: int) -> List[DailyMarketData]:
+        """Get market data for technical indicator calculation.
+        
+        Args:
+            symbol: Stock ticker symbol
+            days: Number of days to retrieve (should be enough for longest indicator)
+            
+        Returns:
+            List of DailyMarketData records, ordered by date ascending
+        """
+        async with self.async_session() as session:
+            try:
+                result = await session.execute(
+                    select(DailyMarketData)
+                    .where(DailyMarketData.symbol == symbol.upper())
+                    .order_by(DailyMarketData.date.asc())
+                    .limit(days)
+                )
+                records = result.scalars().all()
+                return list(records)
+            except Exception as e:
+                logger.error(f"Failed to get market data for calculation for {symbol}: {e}")
+                raise
 
 
 # Global database manager instance

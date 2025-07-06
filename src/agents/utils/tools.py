@@ -7,6 +7,7 @@ from config.sp500_symbols import get_sp500_symbols
 from src.integrations.tradier_client import tradier_client
 from src.utils.database import db_manager
 from config.sp500_symbols import get_sp500_symbols
+from src.analyzers.technical_analysis import calculate_all_indicators, validate_data_sufficiency, get_technical_summary
 
 logger = logging.getLogger(__name__)
 
@@ -229,3 +230,167 @@ This data can be used to analyze trends, calculate technical indicators, assess 
 """
     
     return context
+
+
+@tool
+async def update_technical_indicators() -> str:
+    """Calculate and update technical indicators for all stocks with sufficient data.
+    
+    This tool checks for existing technical indicators for today's date and calculates
+    them if they don't exist. It processes stocks that have at least 200 days of data
+    and calculates: 200-day SMA, 100-day SMA, 50-day SMA, 15-day EMA, and 8-day EMA.
+    
+    Returns:
+        A summary message indicating the results of the technical analysis update.
+    """
+    logger.info("Starting technical indicators update...")
+    
+    today = date.today()
+    
+    try:
+        # Get all symbols with sufficient data (at least 200 days)
+        symbols_with_data = await db_manager.get_symbols_with_sufficient_data(min_days=200)
+        
+        if not symbols_with_data:
+            return "❌ No symbols found with sufficient data (200+ days) for technical analysis."
+        
+        logger.info(f"Found {len(symbols_with_data)} symbols with sufficient data")
+        
+        symbols_processed = 0
+        symbols_updated = 0
+        symbols_skipped = 0
+        
+        for idx, symbol in enumerate(symbols_with_data, 1):
+            try:
+                logger.info(f"[{idx}/{len(symbols_with_data)}] Processing {symbol}...")
+                
+                # Check if technical indicators already exist for today
+                existing_indicators = await db_manager.get_existing_technical_indicators(symbol, today)
+                
+                if existing_indicators:
+                    logger.info(f"{symbol}: Technical indicators already exist for {today}")
+                    symbols_skipped += 1
+                    continue
+                
+                # Get market data for calculation (need extra days for 200-day SMA)
+                market_data = await db_manager.get_market_data_for_calculation(symbol, days=250)
+                
+                if not validate_data_sufficiency(market_data, required_days=200):
+                    logger.warning(f"{symbol}: Insufficient data for technical analysis")
+                    continue
+                
+                # Calculate technical indicators
+                indicators = calculate_all_indicators(market_data, today)
+                
+                # Only save if we have at least some indicators calculated
+                if any(value is not None for value in indicators.values()):
+                    await db_manager.insert_technical_indicators(symbol, today, indicators)
+                    symbols_updated += 1
+                    logger.info(f"{symbol}: Technical indicators calculated and saved")
+                else:
+                    logger.warning(f"{symbol}: No indicators could be calculated")
+                
+                symbols_processed += 1
+                
+                # Log progress every 50 symbols
+                if idx % 50 == 0:
+                    progress_msg = f"Progress: {idx}/{len(symbols_with_data)} symbols processed ({symbols_updated} updated, {symbols_skipped} skipped)"
+                    logger.info(progress_msg)
+                
+            except Exception as e:
+                logger.error(f"Failed to process technical indicators for {symbol}: {e}")
+                continue
+        
+        success_msg = f"✅ Technical indicators update completed! Processed {symbols_processed} symbols: {symbols_updated} updated, {symbols_skipped} already current."
+        logger.info(success_msg)
+        return success_msg
+        
+    except Exception as e:
+        error_msg = f"❌ Technical indicators update failed: {str(e)}"
+        logger.error(error_msg)
+        return error_msg
+
+
+@tool
+async def get_technical_analysis(symbol: str) -> str:
+    """Get technical analysis for a specific stock symbol.
+    
+    This tool retrieves the latest technical indicators for a stock and provides
+    a formatted analysis including moving averages and their relationship to the
+    current price.
+    
+    Args:
+        symbol: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'TSLA')
+        
+    Returns:
+        Formatted technical analysis summary
+    """
+    logger.info(f"Getting technical analysis for {symbol}")
+    
+    # Clean and validate symbol
+    symbol = symbol.upper().strip()
+    
+    try:
+        # Get the most recent technical indicators
+        today = date.today()
+        technical_data = await db_manager.get_existing_technical_indicators(symbol, today)
+        
+        if not technical_data:
+            # Try previous trading day
+            yesterday = today - timedelta(days=1)
+            technical_data = await db_manager.get_existing_technical_indicators(symbol, yesterday)
+            
+            if not technical_data:
+                return f"❌ No technical indicators found for {symbol}. Run the technical indicators update first."
+        
+        # Get current price from recent market data
+        recent_data = await db_manager.get_recent_market_data(symbol, days=1)
+        if not recent_data:
+            return f"❌ No recent market data found for {symbol}."
+        
+        current_price = recent_data[0].close
+        
+        # Create indicators dictionary
+        indicators = {
+            'sma_200': technical_data.sma_200,
+            'sma_100': technical_data.sma_100,
+            'sma_50': technical_data.sma_50,
+            'ema_15': technical_data.ema_15,
+            'ema_8': technical_data.ema_8
+        }
+        
+        # Generate technical summary
+        summary = f"📊 TECHNICAL ANALYSIS FOR {symbol}\n"
+        summary += f"Analysis Date: {technical_data.date}\n\n"
+        summary += get_technical_summary(indicators, current_price)
+        
+        # Add trend analysis
+        summary += "\n🔍 TREND ANALYSIS:\n"
+        if indicators['sma_200'] and indicators['sma_100'] and indicators['sma_50']:
+            if current_price > indicators['sma_200']:
+                summary += "• Long-term trend: 📈 BULLISH (above 200-day SMA)\n"
+            else:
+                summary += "• Long-term trend: 📉 BEARISH (below 200-day SMA)\n"
+            
+            if indicators['sma_50'] > indicators['sma_100'] > indicators['sma_200']:
+                summary += "• Moving average alignment: 📈 BULLISH (50 > 100 > 200)\n"
+            elif indicators['sma_50'] < indicators['sma_100'] < indicators['sma_200']:
+                summary += "• Moving average alignment: 📉 BEARISH (50 < 100 < 200)\n"
+            else:
+                summary += "• Moving average alignment: ⚡ MIXED\n"
+        
+        if indicators['ema_15'] and indicators['ema_8']:
+            if current_price > indicators['ema_15'] and indicators['ema_8'] > indicators['ema_15']:
+                summary += "• Short-term momentum: 📈 BULLISH (price above EMAs, 8 > 15)\n"
+            elif current_price < indicators['ema_15'] and indicators['ema_8'] < indicators['ema_15']:
+                summary += "• Short-term momentum: 📉 BEARISH (price below EMAs, 8 < 15)\n"
+            else:
+                summary += "• Short-term momentum: ⚡ MIXED\n"
+        
+        logger.info(f"Successfully generated technical analysis for {symbol}")
+        return summary
+        
+    except Exception as e:
+        error_msg = f"❌ Failed to get technical analysis for {symbol}: {str(e)}"
+        logger.error(error_msg)
+        return error_msg

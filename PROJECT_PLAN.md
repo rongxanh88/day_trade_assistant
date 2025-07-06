@@ -41,7 +41,7 @@ A LangGraph-powered trading assistant that identifies high-probability setups wh
 - [x] Temporary: Ask agent questions using daily market data
 
 ### Phase 2: Core Analysis (Week 2)
-- [ ] Technical indicator calculations
+- [x] Technical indicator calculations
 - [ ] Basic setup detection algorithms
 - [ ] Risk/reward analysis
 - [ ] Alert system foundation
