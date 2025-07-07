@@ -8,7 +8,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.analyzers.real_relative_strength import calculate_wilders_average, calculate_true_range
+from src.analyzers.real_relative_strength import calculate_wilders_average, calculate_true_range, calculate_rrs_for_period
 
 
 class TestCalculateTrueRange:
@@ -216,6 +216,243 @@ class TestCalculateWildersAverage:
         
         # When all values are the same, result should be that value
         assert result == 50.0
+
+
+class TestCalculateRrsForPeriod:
+    """Test suite for calculate_rrs_for_period function."""
+    
+    def create_market_dataframe(self, prices: list, start_date: str = "2024-01-01") -> pd.DataFrame:
+        """Helper method to create market data DataFrame from list of closing prices.
+        
+        Args:
+            prices: List of closing prices
+            start_date: Starting date in YYYY-MM-DD format
+        """
+        from datetime import datetime, timedelta
+        
+        df_data = []
+        base_date = datetime.strptime(start_date, "%Y-%m-%d")
+        
+        for i, close_price in enumerate(prices):
+            # Create realistic OHLC data with some volatility
+            volatility = 0.02  # 2% daily volatility
+            daily_range = close_price * volatility
+            
+            open_price = close_price + np.random.uniform(-daily_range/2, daily_range/2)
+            high_price = max(open_price, close_price) + abs(np.random.uniform(0, daily_range/2))
+            low_price = min(open_price, close_price) - abs(np.random.uniform(0, daily_range/2))
+            
+            df_data.append({
+                'date': (base_date + timedelta(days=i)).strftime("%Y-%m-%d"),
+                'open': round(open_price, 2),
+                'high': round(high_price, 2),
+                'low': round(low_price, 2),
+                'close': round(close_price, 2),
+                'volume': 1000000 + i * 10000
+            })
+        
+        return pd.DataFrame(df_data)
+    
+    def create_test_scenario_data(self, days: int = 20) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Create test data for both symbol and SPY with predictable patterns."""
+        # Create SPY data with modest uptrend
+        spy_base_price = 400.0
+        spy_prices = []
+        for i in range(days):
+            # SPY gains 0.1% per day on average
+            spy_price = spy_base_price * (1.001 ** i)
+            spy_prices.append(spy_price)
+        
+        # Create symbol data that outperforms SPY
+        symbol_base_price = 100.0
+        symbol_prices = []
+        for i in range(days):
+            # Symbol gains 0.2% per day on average (outperforming SPY)
+            symbol_price = symbol_base_price * (1.002 ** i)
+            symbol_prices.append(symbol_price)
+        
+        spy_data = self.create_market_dataframe(spy_prices)
+        symbol_data = self.create_market_dataframe(symbol_prices)
+        
+        return symbol_data, spy_data
+    
+    def test_calculate_rrs_for_period_normal_case(self):
+        """Test RRS calculation with normal data and different periods."""
+        symbol_data, spy_data = self.create_test_scenario_data(20)
+        
+        # Test different periods
+        for period in [1, 8, 15]:
+            result = calculate_rrs_for_period(symbol_data, spy_data, period)
+            # Result should be a number (symbol outperforms SPY, so positive RRS expected)
+            assert result is not None
+            assert isinstance(result, float)
+            assert result > 0  # Symbol should outperform SPY in our test scenario
+    
+    def test_calculate_rrs_for_period_insufficient_data_for_atr(self):
+        """Test RRS with insufficient data for 14-day ATR calculation."""
+        # Only 10 days of data, less than 15 required for 14-day ATR + 1
+        symbol_data, spy_data = self.create_test_scenario_data(10)
+        
+        result = calculate_rrs_for_period(symbol_data, spy_data, 1)
+        
+        assert result is None
+    
+    def test_calculate_rrs_for_period_insufficient_data_for_price_change(self):
+        """Test RRS when there's enough data for ATR but not for price changes."""
+        # 15 days: enough for 14-day ATR but need 16+ for 15-day price change
+        symbol_data, spy_data = self.create_test_scenario_data(15)
+        
+        # Should work for 1-day and 8-day periods
+        result_1day = calculate_rrs_for_period(symbol_data, spy_data, 1)
+        result_8day = calculate_rrs_for_period(symbol_data, spy_data, 8)
+        
+        assert result_1day is not None
+        assert result_8day is not None
+        
+        # Should fail for 15-day period (need 16 days minimum)
+        result_15day = calculate_rrs_for_period(symbol_data, spy_data, 15)
+        assert result_15day is None
+    
+    def test_calculate_rrs_for_period_symbol_outperforms(self):
+        """Test RRS when symbol significantly outperforms SPY."""
+        days = 20
+        
+        # SPY flat
+        spy_prices = [400.0] * days
+        
+        # Symbol up 2% over the period
+        symbol_base = 100.0
+        symbol_prices = []
+        for i in range(days):
+            symbol_prices.append(symbol_base + (i * 0.1))  # Linear increase
+        
+        spy_data = self.create_market_dataframe(spy_prices)
+        symbol_data = self.create_market_dataframe(symbol_prices)
+        
+        result = calculate_rrs_for_period(symbol_data, spy_data, 8)
+        
+        assert result is not None
+        assert result > 0.4  # Symbol outperforms flat SPY
+    
+    def test_calculate_rrs_for_period_symbol_underperforms(self):
+        """Test RRS when symbol underperforms SPY."""
+        days = 20
+        
+        # SPY up significantly
+        spy_base = 400.0
+        spy_prices = []
+        for i in range(days):
+            spy_prices.append(spy_base + (i * 0.5))  # Strong uptrend
+        
+        # Symbol flat
+        symbol_prices = [100.0] * days
+        
+        spy_data = self.create_market_dataframe(spy_prices)
+        symbol_data = self.create_market_dataframe(symbol_prices)
+        
+        result = calculate_rrs_for_period(symbol_data, spy_data, 8)
+        
+        assert result is not None
+        assert result < -0.5  # Symbol underperforms rising SPY
+    
+    def test_calculate_rrs_for_period_zero_atr_case(self):
+        """Test RRS when ATR is zero (no volatility)."""
+        days = 20
+        
+        # Both symbol and SPY completely flat (no True Range)
+        spy_prices = [400.0] * days
+        symbol_prices = [100.0] * days
+        
+        # Create DataFrames with no volatility (high = low = close)
+        spy_data = pd.DataFrame([{
+            'date': f'2024-01-{i+1:02d}',
+            'open': 400.0,
+            'high': 400.0,
+            'low': 400.0,
+            'close': 400.0,
+            'volume': 1000000
+        } for i in range(days)])
+        
+        symbol_data = pd.DataFrame([{
+            'date': f'2024-01-{i+1:02d}',
+            'open': 100.0,
+            'high': 100.0,
+            'low': 100.0,
+            'close': 100.0,
+            'volume': 1000000
+        } for i in range(days)])
+        
+        result = calculate_rrs_for_period(symbol_data, spy_data, 8)
+        
+        # Should return None when ATR is zero
+        assert result is None
+    
+    def test_calculate_rrs_for_period_different_periods_use_same_atr(self):
+        """Test that different periods use the same 14-day ATR calculation."""
+        symbol_data, spy_data = self.create_test_scenario_data(25)
+        
+        # Get results for different periods
+        results = {}
+        for period in [1, 8, 15]:
+            results[period] = calculate_rrs_for_period(symbol_data, spy_data, period)
+        
+        # All should return valid results
+        for period, result in results.items():
+            assert result is not None, f"Period {period} returned None"
+            assert isinstance(result, float), f"Period {period} returned non-float"
+        
+        # Results should be different (different price change periods)
+        assert results[1] != results[8]
+        assert results[8] != results[15]
+        assert results[1] != results[15]
+    
+    def test_calculate_rrs_for_period_minimum_data_requirement(self):
+        """Test the minimum data requirement logic."""
+        # Test with exactly 15 days (minimum for 14-day ATR + 1)
+        symbol_data, spy_data = self.create_test_scenario_data(15)
+        
+        # Should work for 1-day period (needs 2 days minimum, have 15)
+        result_1day = calculate_rrs_for_period(symbol_data, spy_data, 1)
+        assert result_1day is not None
+        
+        # Should work for 8-day period (needs 9 days minimum, have 15)
+        result_8day = calculate_rrs_for_period(symbol_data, spy_data, 8)
+        assert result_8day is not None
+        
+        # Should not work for 15-day period (needs 16 days minimum, have 15)
+        result_15day = calculate_rrs_for_period(symbol_data, spy_data, 15)
+        assert result_15day is None
+    
+    def test_calculate_rrs_for_period_with_realistic_data(self):
+        """Test RRS with realistic market-like data patterns."""
+        days = 30
+        
+        # Create more realistic price movements
+        np.random.seed(42)  # For reproducible tests
+        
+        # SPY with random walk
+        spy_prices = [400.0]
+        for i in range(1, days):
+            change = np.random.normal(0, 0.01)  # 1% daily volatility
+            new_price = spy_prices[-1] * (1 + change)
+            spy_prices.append(max(new_price, 1.0))  # Prevent negative prices
+        
+        # Symbol with slightly higher volatility and bias
+        symbol_prices = [100.0]
+        for i in range(1, days):
+            change = np.random.normal(0.001, 0.015)  # Slight positive bias, higher vol
+            new_price = symbol_prices[-1] * (1 + change)
+            symbol_prices.append(max(new_price, 1.0))  # Prevent negative prices
+        
+        spy_data = self.create_market_dataframe(spy_prices)
+        symbol_data = self.create_market_dataframe(symbol_prices)
+        
+        result = calculate_rrs_for_period(symbol_data, spy_data, 8)
+        
+        assert result is not None
+        assert isinstance(result, float)
+        # With our random seed and bias, result should be reasonable
+        assert -5.0 < result < 5.0  # Reasonable RRS range
 
 
 if __name__ == "__main__":
