@@ -75,7 +75,7 @@ def calculate_all_indicators(market_data: List, target_date: date) -> Dict[str, 
         
         # Create DataFrame from market data
         df = pd.DataFrame([{
-            'date': record.date,
+            'date': record.date.isoformat(),
             'close': record.close,
             'open': record.open,
             'high': record.high,
@@ -85,12 +85,13 @@ def calculate_all_indicators(market_data: List, target_date: date) -> Dict[str, 
         
         # Ensure data is sorted by date
         df = df.sort_values('date').reset_index(drop=True)
-        
+
         # Convert target_date to string for comparison (since dates are stored as ISO strings)
         target_date_str = target_date.isoformat() if hasattr(target_date, 'isoformat') else str(target_date)
-        
+
         # Find the row for the target date
         target_row = df[df['date'] == target_date_str]
+
         if target_row.empty:
             logger.warning(f"No data found for target date {target_date_str}")
             return _get_empty_indicators()
