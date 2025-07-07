@@ -485,3 +485,209 @@ async def get_technical_analysis(symbol: str, analysis_date: str = None) -> str:
         error_msg = f"❌ Failed to get technical analysis for {symbol}: {str(e)}"
         logger.error(error_msg)
         return error_msg
+
+
+@tool
+async def get_advanced_stock_analysis(symbol: str, analysis_date: str = None, days_of_data: int = 20) -> str:
+    """Get comprehensive AI-powered stock analysis combining technical indicators and market data.
+    
+    This tool gathers extensive market data and technical indicators, then uses AI to provide
+    in-depth analysis, trend identification, risk assessment, and trading insights.
+    
+    Args:
+        symbol: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'TSLA')
+        analysis_date: Date for analysis in YYYY-MM-DD format. If None, uses today's date.
+        days_of_data: Number of days of market data to include in analysis (default: 20, max: 252)
+        
+    Returns:
+        Comprehensive AI-powered analysis and trading insights
+    """
+    from langchain.chat_models import init_chat_model
+    from config.settings import settings
+    
+    logger.info(f"Getting advanced stock analysis for {symbol} on date={analysis_date}")
+    
+    # Clean and validate inputs
+    symbol = symbol.upper().strip()
+    days_of_data = max(1, min(days_of_data, 252))  # Limit to reasonable range
+    
+    # Parse and validate analysis_date
+    if analysis_date is None:
+        target_date = date.today()
+    else:
+        try:
+            target_date = datetime.strptime(analysis_date, "%Y-%m-%d").date()
+        except ValueError:
+            return f"❌ Invalid date format. Please use YYYY-MM-DD format (e.g., '2025-07-01')."
+    
+    try:
+        # Initialize LLM for analysis
+        llm = init_chat_model(f"google_genai:{settings.default_model}")
+        
+        # Gather comprehensive data
+        logger.info(f"Gathering comprehensive data for {symbol}...")
+        
+        # 1. Get technical indicators
+        technical_data = await db_manager.get_existing_technical_indicators(symbol, target_date)
+        if not technical_data:
+            # Try to find recent technical data within 5 days
+            check_date = target_date - timedelta(days=1)
+            days_checked = 1
+            while not technical_data and days_checked <= 5:
+                if check_date.weekday() < 5:
+                    technical_data = await db_manager.get_existing_technical_indicators(symbol, check_date)
+                if not technical_data:
+                    check_date -= timedelta(days=1)
+                    days_checked += 1
+        
+        # 2. Get market data (up to the analysis date if historical, or recent if current)
+        if target_date <= date.today():
+            market_data = await db_manager.get_market_data_for_calculation_up_to_date(symbol, target_date, days=days_of_data)
+        else:
+            market_data = await db_manager.get_recent_market_data(symbol, days=days_of_data)
+        
+        if not market_data:
+            return f"❌ No market data found for {symbol}. Please update market data first."
+        
+        # 3. Format comprehensive data for LLM analysis
+        analysis_prompt = f"""
+        Please provide a comprehensive technical and fundamental analysis for {symbol}.
+        
+        ANALYSIS REQUEST:
+        - Stock Symbol: {symbol}
+        - Analysis Date: {target_date}
+        - Data Period: {len(market_data)} trading days
+        
+        TECHNICAL INDICATORS DATA:
+        """
+        
+        if technical_data:
+            analysis_prompt += f"""
+        Technical Indicators (Date: {technical_data.date}):
+        • 200-day SMA: ${technical_data.sma_200 or 'N/A'}
+        • 100-day SMA: ${technical_data.sma_100 or 'N/A'}
+        • 50-day SMA: ${technical_data.sma_50 or 'N/A'}
+        • 15-day EMA: ${technical_data.ema_15 or 'N/A'}
+        • 8-day EMA: ${technical_data.ema_8 or 'N/A'}
+        """
+        else:
+            analysis_prompt += "\nTechnical Indicators: Not available for the requested date period."
+        
+        # 4. Add detailed market data
+        analysis_prompt += f"""
+        
+        MARKET DATA ANALYSIS:
+        Recent Market Performance ({len(market_data)} trading days):
+        """
+        
+        # Sort market data chronologically
+        sorted_data = sorted(market_data, key=lambda x: x.date)
+        
+        # Calculate key metrics
+        latest_data = sorted_data[-1]
+        oldest_data = sorted_data[0]
+        
+        price_change = latest_data.close - oldest_data.close
+        price_change_pct = (price_change / oldest_data.close) * 100
+        
+        period_high = max(data.high for data in market_data)
+        period_low = min(data.low for data in market_data)
+        avg_volume = sum(data.volume for data in market_data) / len(market_data)
+        
+        # Recent volatility (5-day)
+        recent_5_days = sorted_data[-5:] if len(sorted_data) >= 5 else sorted_data
+        recent_highs = [data.high for data in recent_5_days]
+        recent_lows = [data.low for data in recent_5_days]
+        recent_volatility = (max(recent_highs) - min(recent_lows)) / min(recent_lows) * 100
+        
+        analysis_prompt += f"""
+        Current Price: ${latest_data.close:.2f} (Date: {latest_data.date})
+        Period Performance: {price_change:+.2f} ({price_change_pct:+.1f}%) over {len(market_data)} days
+        Period High: ${period_high:.2f}
+        Period Low: ${period_low:.2f}
+        Price Range: ${period_high - period_low:.2f} ({((period_high - period_low) / period_low) * 100:.1f}% of low)
+        Average Volume: {avg_volume:,.0f}
+        Recent 5-day Volatility: {recent_volatility:.1f}%
+        
+        DETAILED DAILY DATA (Last 10 trading days):
+        """
+        
+        # Add last 10 days of detailed data
+        recent_10 = sorted_data[-10:] if len(sorted_data) >= 10 else sorted_data
+        for data in reversed(recent_10):
+            daily_change = data.close - data.open
+            daily_change_pct = (daily_change / data.open) * 100 if data.open != 0 else 0
+            daily_range = data.high - data.low
+            daily_range_pct = (daily_range / data.low) * 100 if data.low != 0 else 0
+            
+            analysis_prompt += f"""
+        {data.date}: Open ${data.open:.2f} | High ${data.high:.2f} | Low ${data.low:.2f} | Close ${data.close:.2f}
+                   Volume: {data.volume:,} | Daily Change: {daily_change:+.2f} ({daily_change_pct:+.1f}%) | Range: {daily_range:.2f} ({daily_range_pct:.1f}%)"""
+        
+        analysis_prompt += f"""
+        
+        ANALYSIS REQUIREMENTS:
+        Please provide a comprehensive analysis covering:
+        
+        1. TREND ANALYSIS:
+           - Overall trend direction (short, medium, long-term)
+           - Moving average relationships and significance
+           - Support and resistance levels
+           - Momentum indicators assessment
+        
+        2. TECHNICAL PATTERNS:
+           - Chart patterns or formations
+           - Price action signals
+           - Volume analysis
+           - Breakout or breakdown potential
+        
+        3. RISK ASSESSMENT:
+           - Current volatility level
+           - Risk factors and warning signs
+           - Position sizing considerations
+           - Stop-loss recommendations
+        
+        4. TRADING INSIGHTS:
+           - Entry and exit opportunities
+           - Price targets and levels to watch
+           - Time horizon recommendations
+           - Market conditions context
+        
+        5. MARKET CONTEXT:
+           - How this stock fits in current market environment
+           - Relative strength vs market
+           - Key events or catalysts to watch
+        
+        Please provide actionable insights suitable for both short-term traders and longer-term investors.
+        Use emojis and clear formatting to make the analysis engaging and easy to read.
+        """
+        
+        # 5. Get AI analysis
+        logger.info(f"Requesting AI analysis for {symbol}...")
+        ai_response = await llm.ainvoke(analysis_prompt)
+        
+        # 6. Format final response
+        final_analysis = f"""
+🔍 ADVANCED AI STOCK ANALYSIS: {symbol}
+{'=' * 60}
+
+{ai_response.content}
+
+📊 DATA SUMMARY:
+• Analysis Date: {target_date}
+• Market Data Period: {len(market_data)} trading days ({oldest_data.date} to {latest_data.date})
+• Technical Indicators: {"Available" if technical_data else "Limited"}
+• Current Price: ${latest_data.close:.2f}
+• Period Performance: {price_change_pct:+.1f}%
+
+⚠️  DISCLAIMER: This analysis is for informational purposes only and should not be considered as financial advice. 
+Always conduct your own research and consult with financial professionals before making investment decisions.
+"""
+        
+        logger.info(f"Successfully generated advanced analysis for {symbol}")
+        return final_analysis
+        
+    except Exception as e:
+        error_msg = f"❌ Failed to generate advanced analysis for {symbol}: {str(e)}"
+        logger.error(error_msg)
+        return error_msg

@@ -6,7 +6,7 @@ from langchain.chat_models import init_chat_model
 from langgraph.prebuilt import create_react_agent
 
 from config.settings import settings
-from src.agents.utils.tools import update_market_data, get_symbol_data, update_technical_indicators, get_technical_analysis
+from src.agents.utils.tools import update_market_data, get_symbol_data, update_technical_indicators, get_technical_analysis, get_advanced_stock_analysis
 from src.utils.database import db_manager
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,8 @@ def create_market_scanner():
         update_market_data, 
         get_symbol_data, 
         update_technical_indicators, 
-        get_technical_analysis
+        get_technical_analysis,
+        get_advanced_stock_analysis
     ]
     
     # Create react agent (returns compiled graph)
@@ -35,12 +36,17 @@ def create_market_scanner():
         - Get recent market data for specific symbols
         - Calculate and update technical indicators (200-day SMA, 100-day SMA, 50-day SMA, 15-day EMA, 8-day EMA)
         - Get comprehensive technical analysis for specific stocks
+        - Get advanced AI-powered stock analysis with in-depth insights and trading recommendations
         
         Use these tools to help users analyze market data, identify trends, and answer trading questions.
         Be concise, helpful, and data-driven in your responses.
         
         When users ask about specific stocks, use the get_symbol_data and get_technical_analysis tools 
         to provide comprehensive information including both price data and technical indicators.
+        
+        For deep analysis and trading insights, use the get_advanced_stock_analysis tool which provides
+        AI-powered analysis including trend identification, risk assessment, entry/exit opportunities,
+        and actionable trading recommendations.
         
         When users want to refresh technical indicators, use the update_technical_indicators tool.
         
@@ -70,6 +76,7 @@ async def run_market_chatbot():
         print("• Update market data from Tradier API")
         print("• Answer trading and market questions")
         print("• Compare stocks and identify trends")
+        print("• Provide advanced AI-powered stock analysis with trading insights")
         print("The AI will automatically use tools when needed. Type 'quit' to exit.\n")
         
         # Chat loop
