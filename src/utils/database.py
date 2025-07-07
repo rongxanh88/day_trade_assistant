@@ -369,7 +369,7 @@ class DatabaseManager:
                 result = await session.execute(
                     select(DailyMarketData)
                     .where(DailyMarketData.symbol == symbol.upper())
-                    .order_by(DailyMarketData.date.asc())
+                    .order_by(DailyMarketData.date.desc())
                     .limit(days)
                 )
                 records = result.scalars().all()
