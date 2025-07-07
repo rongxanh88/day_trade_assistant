@@ -8,7 +8,10 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.analyzers.real_relative_strength import calculate_wilders_average, calculate_true_range, calculate_rrs_for_period
+from src.analyzers.real_relative_strength import calculate_wilders_average, calculate_true_range, calculate_rrs_for_period, calculate_real_relative_strength_daily
+from src.data.models import OHLCV
+from unittest.mock import patch
+from datetime import date, timedelta
 
 
 class TestCalculateTrueRange:
@@ -453,6 +456,256 @@ class TestCalculateRrsForPeriod:
         assert isinstance(result, float)
         # With our random seed and bias, result should be reasonable
         assert -5.0 < result < 5.0  # Reasonable RRS range
+
+
+class TestCalculateRealRelativeStrengthDaily:
+    """Test suite for calculate_real_relative_strength_daily function."""
+    
+    def create_ohlcv_data(self, prices: list, start_date: date = date(2024, 1, 1)) -> list[OHLCV]:
+        """Helper method to create OHLCV data objects from list of closing prices.
+        
+        Args:
+            prices: List of closing prices
+            start_date: Starting date
+        """
+        data = []
+        for i, close_price in enumerate(prices):
+            # Create realistic OHLC data with some volatility
+            volatility = 0.02  # 2% daily volatility
+            daily_range = close_price * volatility
+            
+            open_price = close_price + np.random.uniform(-daily_range/2, daily_range/2)
+            high_price = max(open_price, close_price) + abs(np.random.uniform(0, daily_range/2))
+            low_price = min(open_price, close_price) - abs(np.random.uniform(0, daily_range/2))
+            
+            current_date = start_date + timedelta(days=i)
+            
+            data.append(OHLCV(
+                date=current_date.isoformat(),
+                open=round(open_price, 2),
+                high=round(high_price, 2),
+                low=round(low_price, 2),
+                close=round(close_price, 2),
+                volume=1000000 + i * 10000
+            ))
+        
+        return data
+    
+    def create_spy_mock_data(self, prices: list, start_date: date = date(2024, 1, 1)) -> list[OHLCV]:
+        """Create SPY mock data for database mock."""
+        return self.create_ohlcv_data(prices, start_date)
+    
+    @patch('src.analyzers.real_relative_strength.db_manager.get_market_data_for_calculation_up_to_date')
+    def test_calculate_real_relative_strength_daily_normal_case(self, mock_db_call):
+        """Test RRS calculation with normal data for all periods."""
+        # Setup test data
+        days = 25
+        target_date = date(2024, 1, 20)
+        
+        # Create symbol data that outperforms
+        symbol_prices = [100 + i * 0.2 for i in range(days)]  # Uptrending
+        symbol_data = self.create_ohlcv_data(symbol_prices)
+        
+        # Create SPY data that's flatter
+        spy_prices = [400 + i * 0.1 for i in range(days)]  # Slower uptrend
+        spy_mock_data = self.create_spy_mock_data(spy_prices)
+        
+        # Mock the async database call
+        mock_db_call.return_value = spy_mock_data
+        
+        # Call the function
+        result = calculate_real_relative_strength_daily(symbol_data, target_date)
+        
+        # Verify structure
+        assert isinstance(result, dict)
+        assert 'rrs_1_day' in result
+        assert 'rrs_8_day' in result
+        assert 'rrs_15_day' in result
+        
+        # All values should be calculated (not None)
+        assert result['rrs_1_day'] is not None
+        assert result['rrs_8_day'] is not None
+        assert result['rrs_15_day'] is not None
+        
+        # All should be positive (symbol outperforms SPY)
+        assert result['rrs_1_day'] > 0
+        assert result['rrs_8_day'] > 0
+        assert result['rrs_15_day'] > 0
+    
+    @patch('src.analyzers.real_relative_strength.db_manager.get_market_data_for_calculation_up_to_date')
+    def test_calculate_real_relative_strength_daily_no_market_data(self, mock_db_call):
+        """Test RRS when no market data is provided."""
+        target_date = date(2024, 1, 15)
+        
+        result = calculate_real_relative_strength_daily([], target_date)
+        
+        # Should return None values for all periods
+        assert result == {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+        
+        # Database should not be called
+        mock_db_call.assert_not_called()
+    
+    @patch('src.analyzers.real_relative_strength.db_manager.get_market_data_for_calculation_up_to_date')
+    def test_calculate_real_relative_strength_daily_target_date_not_found(self, mock_db_call):
+        """Test RRS when target date is not in the data."""
+        # Create data for different dates
+        symbol_data = self.create_ohlcv_data([100, 101, 102], date(2024, 1, 1))
+        target_date = date(2024, 2, 15)  # Date not in the data
+        
+        result = calculate_real_relative_strength_daily(symbol_data, target_date)
+        
+        # Should return None values
+        assert result == {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+        
+        # Database should not be called
+        mock_db_call.assert_not_called()
+    
+    @patch('src.analyzers.real_relative_strength.db_manager.get_market_data_for_calculation_up_to_date')
+    def test_calculate_real_relative_strength_daily_insufficient_data(self, mock_db_call):
+        """Test RRS with insufficient data (less than 20 days)."""
+        # Only 10 days of data
+        symbol_data = self.create_ohlcv_data([100 + i for i in range(10)])
+        target_date = date(2024, 1, 10)
+        
+        result = calculate_real_relative_strength_daily(symbol_data, target_date)
+        
+        # Should return None values due to insufficient data
+        assert result == {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+        
+        # Database should not be called
+        mock_db_call.assert_not_called()
+    
+    @patch('src.analyzers.real_relative_strength.db_manager.get_market_data_for_calculation_up_to_date')
+    def test_calculate_real_relative_strength_daily_no_spy_data(self, mock_db_call):
+        """Test RRS when SPY data cannot be retrieved."""
+        # Setup sufficient symbol data
+        symbol_data = self.create_ohlcv_data([100 + i * 0.1 for i in range(25)])
+        target_date = date(2024, 1, 20)
+        
+        # Mock database to return no SPY data
+        mock_db_call.return_value = []
+        
+        result = calculate_real_relative_strength_daily(symbol_data, target_date)
+        
+        # Should return None values due to missing SPY data
+        assert result == {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+        
+        # Verify database was called
+        mock_db_call.assert_called_once()
+    
+    @patch('src.analyzers.real_relative_strength.db_manager.get_market_data_for_calculation_up_to_date')
+    def test_calculate_real_relative_strength_daily_mismatched_spy_data(self, mock_db_call):
+        """Test RRS when SPY data length doesn't match symbol data."""
+        # Setup symbol data
+        symbol_data = self.create_ohlcv_data([100 + i * 0.1 for i in range(25)])
+        target_date = date(2024, 1, 20)
+        
+        # Mock SPY data with different length
+        spy_data = self.create_spy_mock_data([400 + i * 0.05 for i in range(15)])  # Shorter
+        mock_db_call.return_value = spy_data
+        
+        result = calculate_real_relative_strength_daily(symbol_data, target_date)
+        
+        # Should still work but may have some periods as None
+        assert isinstance(result, dict)
+        assert 'rrs_1_day' in result
+        assert 'rrs_8_day' in result
+        assert 'rrs_15_day' in result
+    
+    @patch('src.analyzers.real_relative_strength.db_manager.get_market_data_for_calculation_up_to_date')
+    def test_calculate_real_relative_strength_daily_symbol_underperforms(self, mock_db_call):
+        """Test RRS when symbol underperforms SPY."""
+        days = 25
+        target_date = date(2024, 1, 20)
+        
+        # Create symbol data that's flat
+        symbol_data = self.create_ohlcv_data([100] * days)
+        
+        # Create SPY data that's strongly trending up
+        spy_prices = [400 + i * 0.5 for i in range(days)]  # Strong uptrend
+        spy_mock_data = self.create_spy_mock_data(spy_prices)
+        
+        mock_db_call.return_value = spy_mock_data
+        
+        result = calculate_real_relative_strength_daily(symbol_data, target_date)
+        
+        # All values should be calculated
+        assert result['rrs_1_day'] is not None
+        assert result['rrs_8_day'] is not None
+        assert result['rrs_15_day'] is not None
+        
+        # All should be negative (symbol underperforms SPY)
+        assert result['rrs_8_day'] < 0
+        assert result['rrs_15_day'] < 0
+    
+    @patch('src.analyzers.real_relative_strength.db_manager.get_market_data_for_calculation_up_to_date')
+    def test_calculate_real_relative_strength_daily_edge_case_minimum_data(self, mock_db_call):
+        """Test RRS with exactly minimum required data."""
+        # Exactly 20 days of data (minimum required)
+        days = 20
+        symbol_data = self.create_ohlcv_data([100 + i * 0.1 for i in range(days)])
+        target_date = date(2024, 1, 20)
+        
+        spy_data = self.create_spy_mock_data([400 + i * 0.05 for i in range(days)])
+        mock_db_call.return_value = spy_data
+        
+        result = calculate_real_relative_strength_daily(symbol_data, target_date)
+        
+        assert result['rrs_1_day'] is not None
+        assert result['rrs_8_day'] is not None
+        assert result['rrs_15_day'] is not None
+    
+    @patch('src.analyzers.real_relative_strength.db_manager.get_market_data_for_calculation_up_to_date')
+    def test_calculate_real_relative_strength_daily_exception_handling(self, mock_db_call):
+        """Test RRS exception handling."""
+        # Setup data that might cause calculation errors
+        symbol_data = self.create_ohlcv_data([100 + i * 0.1 for i in range(25)])
+        target_date = date(2024, 1, 20)
+        
+        # Mock database to raise an exception
+        mock_db_call.side_effect = Exception("Database error")
+        
+        result = calculate_real_relative_strength_daily(symbol_data, target_date)
+        
+        # Should return None values when exception occurs
+        assert result == {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+    
+    @patch('src.analyzers.real_relative_strength.db_manager.get_market_data_for_calculation_up_to_date')
+    def test_calculate_real_relative_strength_daily_realistic_scenario(self, mock_db_call):
+        """Test RRS with realistic market scenario."""
+        days = 30
+        target_date = date(2024, 1, 25)
+        
+        # Create realistic symbol data with some volatility
+        np.random.seed(123)  # For reproducible test
+        symbol_prices = [100.0]
+        for i in range(1, days):
+            change = np.random.normal(0.002, 0.015)  # 0.2% daily return, 1.5% volatility
+            new_price = symbol_prices[-1] * (1 + change)
+            symbol_prices.append(max(new_price, 1.0))
+        
+        symbol_data = self.create_ohlcv_data(symbol_prices)
+        
+        # Create SPY data with lower volatility
+        spy_prices = [400.0]
+        for i in range(1, days):
+            change = np.random.normal(0.001, 0.01)  # 0.1% daily return, 1% volatility
+            new_price = spy_prices[-1] * (1 + change)
+            spy_prices.append(max(new_price, 1.0))
+        
+        spy_data = self.create_spy_mock_data(spy_prices)
+        mock_db_call.return_value = spy_data
+        
+        result = calculate_real_relative_strength_daily(symbol_data, target_date)
+        
+        # Should return reasonable values
+        assert result['rrs_1_day'] is not None
+        assert result['rrs_8_day'] is not None
+        assert result['rrs_15_day'] is not None
+        
+        # Values should be within reasonable range
+        for period in ['rrs_1_day', 'rrs_8_day', 'rrs_15_day']:
+            assert -5.0 < result[period] < 5.0, f"{period} value {result[period]} outside reasonable range"
 
 
 if __name__ == "__main__":
