@@ -363,43 +363,77 @@ async def update_technical_indicators(target_date: str = None, num_days: int = 1
 
 
 @tool
-async def get_technical_analysis(symbol: str) -> str:
+async def get_technical_analysis(symbol: str, analysis_date: str = None) -> str:
     """Get technical analysis for a specific stock symbol.
     
-    This tool retrieves the latest technical indicators for a stock and provides
+    This tool retrieves technical indicators for a stock and provides
     a formatted analysis including moving averages and their relationship to the
-    current price.
+    price on the specified date.
     
     Args:
         symbol: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'TSLA')
+        analysis_date: Date for analysis in YYYY-MM-DD format. If None, uses today's date.
         
     Returns:
         Formatted technical analysis summary
     """
-    logger.info(f"Getting technical analysis for {symbol}")
+    logger.info(f"Getting technical analysis for {symbol} on date={analysis_date}")
     
     # Clean and validate symbol
     symbol = symbol.upper().strip()
     
+    # Parse and validate analysis_date
+    if analysis_date is None:
+        target_date = date.today()
+    else:
+        try:
+            target_date = datetime.strptime(analysis_date, "%Y-%m-%d").date()
+        except ValueError:
+            return f"❌ Invalid date format. Please use YYYY-MM-DD format (e.g., '2025-07-01')."
+    
     try:
-        # Get the most recent technical indicators
-        today = date.today()
-        technical_data = await db_manager.get_existing_technical_indicators(symbol, today)
+        # Get technical indicators for the specified date
+        technical_data = await db_manager.get_existing_technical_indicators(symbol, target_date)
         
         if not technical_data:
-            # Try previous trading day
-            yesterday = today - timedelta(days=1)
-            technical_data = await db_manager.get_existing_technical_indicators(symbol, yesterday)
+            # Try previous trading day if it's a weekend or holiday
+            check_date = target_date - timedelta(days=1)
+            days_checked = 1
+            
+            # Look back up to 5 days to find the most recent technical data
+            while not technical_data and days_checked <= 5:
+                if check_date.weekday() < 5:  # Only check weekdays
+                    technical_data = await db_manager.get_existing_technical_indicators(symbol, check_date)
+                
+                if not technical_data:
+                    check_date -= timedelta(days=1)
+                    days_checked += 1
             
             if not technical_data:
-                return f"❌ No technical indicators found for {symbol}. Run the technical indicators update first."
+                return f"❌ No technical indicators found for {symbol} around {target_date}. Run the technical indicators update first for that date period."
         
-        # Get current price from recent market data
-        recent_data = await db_manager.get_recent_market_data(symbol, days=1)
-        if not recent_data:
-            return f"❌ No recent market data found for {symbol}."
+        # Get market data for the analysis date to get the price
+        # We need to find the market data for the exact date the technical indicators were calculated
+        indicator_date = technical_data.date
         
-        current_price = recent_data[0].close
+        # Get market data around the indicator date
+        market_data_list = await db_manager.get_market_data_for_calculation_up_to_date(symbol, indicator_date, days=5)
+        
+        if not market_data_list:
+            return f"❌ No market data found for {symbol} around {indicator_date}."
+        
+        # Find the market data for the exact indicator date
+        price_data = None
+        for data in market_data_list:
+            if data.date == indicator_date:
+                price_data = data
+                break
+        
+        if not price_data:
+            # If we can't find exact date, use the most recent data
+            price_data = market_data_list[-1]  # Most recent since list is ascending
+        
+        analysis_price = price_data.close
         
         # Create indicators dictionary
         indicators = {
@@ -412,13 +446,14 @@ async def get_technical_analysis(symbol: str) -> str:
         
         # Generate technical summary
         summary = f"📊 TECHNICAL ANALYSIS FOR {symbol}\n"
-        summary += f"Analysis Date: {technical_data.date}\n\n"
-        summary += get_technical_summary(indicators, current_price)
+        summary += f"Analysis Date: {technical_data.date}\n"
+        summary += f"Price on Analysis Date: ${round(analysis_price, 2)}\n\n"
+        summary += get_technical_summary(indicators, analysis_price)
         
         # Add trend analysis
         summary += "\n🔍 TREND ANALYSIS:\n"
         if indicators['sma_200'] and indicators['sma_100'] and indicators['sma_50']:
-            if current_price > indicators['sma_200']:
+            if analysis_price > indicators['sma_200']:
                 summary += "• Long-term trend: 📈 BULLISH (above 200-day SMA)\n"
             else:
                 summary += "• Long-term trend: 📉 BEARISH (below 200-day SMA)\n"
@@ -431,14 +466,19 @@ async def get_technical_analysis(symbol: str) -> str:
                 summary += "• Moving average alignment: ⚡ MIXED\n"
         
         if indicators['ema_15'] and indicators['ema_8']:
-            if current_price > indicators['ema_15'] and indicators['ema_8'] > indicators['ema_15']:
+            if analysis_price > indicators['ema_15'] and indicators['ema_8'] > indicators['ema_15']:
                 summary += "• Short-term momentum: 📈 BULLISH (price above EMAs, 8 > 15)\n"
-            elif current_price < indicators['ema_15'] and indicators['ema_8'] < indicators['ema_15']:
+            elif analysis_price < indicators['ema_15'] and indicators['ema_8'] < indicators['ema_15']:
                 summary += "• Short-term momentum: 📉 BEARISH (price below EMAs, 8 < 15)\n"
             else:
                 summary += "• Short-term momentum: ⚡ MIXED\n"
         
-        logger.info(f"Successfully generated technical analysis for {symbol}")
+        # Add note if using data from a different date than requested
+        if analysis_date is not None and technical_data.date != target_date:
+            summary += f"\n📅 Note: Using technical indicators from {technical_data.date} "
+            summary += f"(closest available data to requested date {target_date})\n"
+        
+        logger.info(f"Successfully generated technical analysis for {symbol} on {technical_data.date}")
         return summary
         
     except Exception as e:
