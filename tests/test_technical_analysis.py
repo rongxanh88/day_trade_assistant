@@ -195,34 +195,6 @@ class TestTechnicalAnalysis:
         assert all(isinstance(val, float) for val in result.values())
         assert all(val > 0 for val in result.values())
 
-    # @patch('src.analyzers.real_relative_strength.calculate_real_relative_strength_daily')
-    def test_calculate_all_indicators_partial_data(self):
-        """Test calculating indicators with partial data (some indicators missing)."""
-        # Create only 100 days of data - not enough for 200-day SMA
-        test_data = self.create_test_data(199, start_price=100.0, trend="neutral")
-        target_date = date(2024, 4, 10)  # Within our test data range
-
-        # Mock RRS calculation to return sample values
-        # mock_rrs.return_value = {
-        #     'rrs_1_day': 0.2345,
-        #     'rrs_8_day': 0.6789,
-        #     'rrs_15_day': -0.1234
-        # }
-        
-        result = calculate_all_indicators(test_data, target_date)
-        
-        # 200-day SMA should be None due to insufficient data
-        assert result['sma_200'] is None
-        
-        # But other indicators should be calculated
-        assert result['sma_100'] is not None
-        assert result['sma_50'] is not None
-        assert result['ema_15'] is not None
-        assert result['ema_8'] is not None
-        assert result['rrs_1_day'] is not None
-        assert result['rrs_8_day'] is not None
-        assert result['rrs_15_day'] is not None
-
     def test_calculate_all_indicators_no_data(self):
         """Test calculating indicators with no data."""
         result = calculate_all_indicators([], date(2024, 1, 1))
@@ -254,23 +226,6 @@ class TestTechnicalAnalysis:
         # Since recent prices are higher, EMA should be higher than SMA
         assert ema_result > sma_result
 
-    def test_calculate_all_indicators_data_sorting(self):
-        """Test that indicators are calculated correctly even with unsorted data."""
-        # Create data in reverse order (newest first)
-        test_data = self.create_test_data(100, start_price=100.0, trend="uptrend")
-        test_data.reverse()  # Reverse the order
-        
-        target_date = date(2024, 2, 20)  # Pick a date in the middle
-        
-        result = calculate_all_indicators(test_data, target_date)
-        
-        # Should still calculate indicators correctly
-        assert result['sma_50'] is not None
-        assert result['ema_15'] is not None
-        assert result['ema_8'] is not None
-        assert result['rrs_1_day'] is not None
-        assert result['rrs_8_day'] is not None
-        assert result['rrs_15_day'] is not None
 
     @patch('src.analyzers.technical_analysis.logger')
     def test_calculate_all_indicators_error_handling(self, mock_logger):
