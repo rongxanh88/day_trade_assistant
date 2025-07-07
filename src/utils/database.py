@@ -56,6 +56,11 @@ class TechnicalIndicators(Base):
     ema_15 = Column(Float, nullable=True)
     ema_8 = Column(Float, nullable=True)
     
+    # Real Relative Strength
+    rrs_1_day = Column(Float, nullable=True)
+    rrs_8_day = Column(Float, nullable=True)
+    rrs_15_day = Column(Float, nullable=True)
+    
     # Metadata
     created_at = Column(DateTime, default=datetime.now())
     updated_at = Column(DateTime, default=datetime.now(), onupdate=datetime.now())
@@ -327,6 +332,9 @@ class DatabaseManager:
                     'sma_50': indicators.get('sma_50'),
                     'ema_15': indicators.get('ema_15'),
                     'ema_8': indicators.get('ema_8'),
+                    'rrs_1_day': indicators.get('rrs_1_day'),
+                    'rrs_8_day': indicators.get('rrs_8_day'),
+                    'rrs_15_day': indicators.get('rrs_15_day'),
                     'created_at': datetime.now(),
                     'updated_at': datetime.now()
                 }
@@ -341,6 +349,9 @@ class DatabaseManager:
                         'sma_50': stmt.excluded.sma_50,
                         'ema_15': stmt.excluded.ema_15,
                         'ema_8': stmt.excluded.ema_8,
+                        'rrs_1_day': stmt.excluded.rrs_1_day,
+                        'rrs_8_day': stmt.excluded.rrs_8_day,
+                        'rrs_15_day': stmt.excluded.rrs_15_day,
                         'updated_at': datetime.now()
                     }
                 )
