@@ -56,6 +56,18 @@ def calculate_ema(prices: List[float], period: int) -> Optional[float]:
     
     return round(ema, 2)
 
+def calculate_real_relative_strength_daily(market_data: List, target_date: date) -> Dict[str, Optional[float]]:
+    """Calculate Real Relative Strength over multiple periods up to a target date. Compare with SPY as benchmark.
+    
+    Args:
+        prices: List of closing prices (most recent price should be last) with enough data for 20 trading days
+        target_date: The date for which to calculate indicators
+        
+    Returns:
+        Dictionary containing real relative strength for a 1 day period, 8 day period, 15 day period
+    """
+
+
 
 def calculate_all_indicators(market_data: List, target_date: date) -> Dict[str, Optional[float]]:
     """Calculate all required technical indicators for a given dataset.
