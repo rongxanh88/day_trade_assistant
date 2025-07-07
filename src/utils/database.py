@@ -378,6 +378,37 @@ class DatabaseManager:
                 logger.error(f"Failed to get market data for calculation for {symbol}: {e}")
                 raise
 
+    async def get_market_data_for_calculation_up_to_date(self, symbol: str, end_date: date, days: int) -> List[DailyMarketData]:
+        """Get market data for technical indicator calculation up to a specific date.
+        
+        Args:
+            symbol: Stock ticker symbol
+            end_date: The end date (inclusive) for the data range
+            days: Number of days to retrieve before the end date
+            
+        Returns:
+            List of DailyMarketData records up to end_date, ordered by date ascending
+        """
+        async with self.async_session() as session:
+            try:
+                result = await session.execute(
+                    select(DailyMarketData)
+                    .where(
+                        and_(
+                            DailyMarketData.symbol == symbol.upper(),
+                            DailyMarketData.date <= end_date
+                        )
+                    )
+                    .order_by(DailyMarketData.date.desc())
+                    .limit(days)
+                )
+                records = result.scalars().all()
+                # Return in ascending order (oldest first) for technical analysis
+                return list(reversed(records))
+            except Exception as e:
+                logger.error(f"Failed to get market data for calculation up to {end_date} for {symbol}: {e}")
+                raise
+
 
 # Global database manager instance
 db_manager = DatabaseManager() 

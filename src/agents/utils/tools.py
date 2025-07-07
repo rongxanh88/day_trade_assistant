@@ -233,20 +233,56 @@ This data can be used to analyze trends, calculate technical indicators, assess 
 
 
 @tool
-async def update_technical_indicators() -> str:
+async def update_technical_indicators(target_date: str = None, num_days: int = 1) -> str:
     """Calculate and update technical indicators for all stocks with sufficient data.
     
-    This tool checks for existing technical indicators for today's date and calculates
+    This tool checks for existing technical indicators for the specified date(s) and calculates
     them if they don't exist. It processes stocks that have at least 200 days of data
     and calculates: 200-day SMA, 100-day SMA, 50-day SMA, 15-day EMA, and 8-day EMA.
+    
+    Args:
+        target_date: Target date in YYYY-MM-DD format. If None, uses today's date.
+        num_days: Number of preceding days to calculate indicators for (default: 1)
+                  For example, if target_date is 2025-07-01 and num_days is 5,
+                  it will calculate for the 5 trading days ending on 2025-07-01.
     
     Returns:
         A summary message indicating the results of the technical analysis update.
     """
-    logger.info("Starting technical indicators update...")
+    logger.info(f"Starting technical indicators update for target_date={target_date}, num_days={num_days}")
     
-    today = date.today()
+    # Parse and validate target_date
+    if target_date is None:
+        end_date = date.today()
+    else:
+        try:
+            end_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+        except ValueError:
+            return f"❌ Invalid date format. Please use YYYY-MM-DD format (e.g., '2025-07-01')."
     
+    # Validate num_days
+    if num_days < 1:
+        return "❌ num_days must be at least 1."
+    if num_days > 252:  # Limit to about 1 year of trading days
+        return "❌ num_days cannot exceed 252 (about 1 year of trading days)."
+    
+    # Generate list of target dates (working backwards from end_date)
+    target_dates = []
+    current_date = end_date
+    days_added = 0
+    
+    while days_added < num_days:
+        # Only include weekdays (Monday=0, Sunday=6)
+        if current_date.weekday() < 5:  # Monday to Friday
+            target_dates.append(current_date)
+            days_added += 1
+        current_date -= timedelta(days=1)
+    
+    # Reverse to process chronologically (oldest first)
+    target_dates.reverse()
+    
+    logger.info(f"Will calculate indicators for {len(target_dates)} dates: {target_dates[0]} to {target_dates[-1]}")
+
     try:
         # Get all symbols with sufficient data (at least 200 days)
         symbols_with_data = await db_manager.get_symbols_with_sufficient_data(min_days=200)
@@ -257,51 +293,66 @@ async def update_technical_indicators() -> str:
         logger.info(f"Found {len(symbols_with_data)} symbols with sufficient data")
         
         symbols_processed = 0
-        symbols_updated = 0
-        symbols_skipped = 0
+        total_indicators_calculated = 0
+        total_indicators_skipped = 0
         
         for idx, symbol in enumerate(symbols_with_data, 1):
             try:
                 logger.info(f"[{idx}/{len(symbols_with_data)}] Processing {symbol}...")
                 
-                # Check if technical indicators already exist for today
-                existing_indicators = await db_manager.get_existing_technical_indicators(symbol, today)
+                symbol_indicators_calculated = 0
+                symbol_indicators_skipped = 0
                 
-                if existing_indicators:
-                    logger.info(f"{symbol}: Technical indicators already exist for {today}")
-                    symbols_skipped += 1
-                    continue
+                # Process each target date for this symbol
+                for calc_date in target_dates:
+                    try:
+                        # Check if technical indicators already exist for this date
+                        existing_indicators = await db_manager.get_existing_technical_indicators(symbol, calc_date)
+                        
+                        if existing_indicators:
+                            logger.debug(f"{symbol}: Technical indicators already exist for {calc_date}")
+                            symbol_indicators_skipped += 1
+                            continue
+                        
+                        # Get market data for calculation (need extra days for 200-day SMA)
+                        # We need data up to the calculation date, so get historical data
+                        market_data = await db_manager.get_market_data_for_calculation_up_to_date(symbol, calc_date, days=250)
+                        
+                        if not validate_data_sufficiency(market_data, required_days=200):
+                            logger.warning(f"{symbol}: Insufficient data for technical analysis on {calc_date}")
+                            continue
+                        
+                        # Calculate technical indicators for this specific date
+                        indicators = calculate_all_indicators(market_data, calc_date)
+                        
+                        # Only save if we have at least some indicators calculated
+                        if any(value is not None for value in indicators.values()):
+                            await db_manager.insert_technical_indicators(symbol, calc_date, indicators)
+                            symbol_indicators_calculated += 1
+                            logger.debug(f"{symbol}: Technical indicators calculated and saved for {calc_date}")
+                        else:
+                            logger.warning(f"{symbol}: No indicators could be calculated for {calc_date}")
+                            
+                    except Exception as e:
+                        logger.error(f"Failed to process {symbol} for date {calc_date}: {e}")
+                        continue
                 
-                # Get market data for calculation (need extra days for 200-day SMA)
-                market_data = await db_manager.get_market_data_for_calculation(symbol, days=250)
+                total_indicators_calculated += symbol_indicators_calculated
+                total_indicators_skipped += symbol_indicators_skipped
                 
-                if not validate_data_sufficiency(market_data, required_days=200):
-                    logger.warning(f"{symbol}: Insufficient data for technical analysis")
-                    continue
-                
-                # Calculate technical indicators
-                indicators = calculate_all_indicators(market_data, today)
-                
-                # Only save if we have at least some indicators calculated
-                if any(value is not None for value in indicators.values()):
-                    await db_manager.insert_technical_indicators(symbol, today, indicators)
-                    symbols_updated += 1
-                    logger.info(f"{symbol}: Technical indicators calculated and saved")
-                else:
-                    logger.warning(f"{symbol}: No indicators could be calculated")
-                
+                logger.info(f"{symbol}: {symbol_indicators_calculated} calculated, {symbol_indicators_skipped} skipped")
                 symbols_processed += 1
                 
                 # Log progress every 50 symbols
                 if idx % 50 == 0:
-                    progress_msg = f"Progress: {idx}/{len(symbols_with_data)} symbols processed ({symbols_updated} updated, {symbols_skipped} skipped)"
+                    progress_msg = f"Progress: {idx}/{len(symbols_with_data)} symbols processed"
                     logger.info(progress_msg)
                 
             except Exception as e:
                 logger.error(f"Failed to process technical indicators for {symbol}: {e}")
                 continue
         
-        success_msg = f"✅ Technical indicators update completed! Processed {symbols_processed} symbols: {symbols_updated} updated, {symbols_skipped} already current."
+        success_msg = f"✅ Technical indicators update completed! Processed {symbols_processed} symbols across {len(target_dates)} dates. Calculated: {total_indicators_calculated}, Already existed: {total_indicators_skipped}."
         logger.info(success_msg)
         return success_msg
         
