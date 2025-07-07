@@ -126,10 +126,14 @@ def calculate_real_relative_strength_daily(market_data: List, target_date: date)
 def calculate_rrs_for_period(symbol_data: pd.DataFrame, spy_data: pd.DataFrame, period: int) -> Optional[float]:
     """Calculate RRS for a specific period following the ThinkScript logic."""
     try:
-        if len(symbol_data) < period + 1 or len(spy_data) < period + 1:
+        # Always use 14 days for ATR calculation, but need enough data for both price changes and ATR
+        atr_period = 14
+        min_required_days = max(period + 1, atr_period + 1)
+        
+        if len(symbol_data) < min_required_days or len(spy_data) < min_required_days:
             return None
             
-        # Calculate rolling price changes
+        # Calculate rolling price changes using the specified period
         symbol_rolling_move = symbol_data['close'].iloc[-1] - symbol_data['close'].iloc[-(period + 1)]
         spy_rolling_move = spy_data['close'].iloc[-1] - spy_data['close'].iloc[-(period + 1)]
         
@@ -137,9 +141,9 @@ def calculate_rrs_for_period(symbol_data: pd.DataFrame, spy_data: pd.DataFrame, 
         symbol_tr = calculate_true_range(symbol_data)
         spy_tr = calculate_true_range(spy_data)
         
-        # Calculate Wilder's Average (ATR) using the period
-        symbol_atr = calculate_wilders_average(symbol_tr, period)
-        spy_atr = calculate_wilders_average(spy_tr, period)
+        # Calculate Wilder's Average (ATR) using fixed 14-day period
+        symbol_atr = calculate_wilders_average(symbol_tr, atr_period)
+        spy_atr = calculate_wilders_average(spy_tr, atr_period)
         
         if symbol_atr is None or spy_atr is None or spy_atr == 0 or symbol_atr == 0:
             return None
