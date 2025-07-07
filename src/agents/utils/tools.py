@@ -7,7 +7,8 @@ from config.sp500_symbols import get_sp500_symbols
 from src.integrations.tradier_client import tradier_client
 from src.utils.database import db_manager
 from config.sp500_symbols import get_sp500_symbols
-from src.analyzers.technical_analysis import calculate_all_indicators, validate_data_sufficiency, get_technical_summary
+from src.analyzers.technical_analysis import calculate_all_indicators
+from src.analyzers.utils import validate_data_sufficiency, get_technical_summary
 
 logger = logging.getLogger(__name__)
 

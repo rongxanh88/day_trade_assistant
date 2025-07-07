@@ -1,16 +1,22 @@
 """
-Utility functions for technical analysis calculations.
+Real Relative Strength (RRS) Calculation Module
 
-This module contains helper functions for various technical indicators
-including Real Relative Strength (RRS) calculations.
+This module provides the Real Relative Strength calculation functionality
+that compares a symbol's performance against SPY (S&P 500 ETF) benchmark.
 """
 
 import logging
-from typing import Optional
+from typing import List, Dict, Optional
 import pandas as pd
 import numpy as np
+from datetime import date
+import asyncio
+
+# Add database import
+from src.utils.database import db_manager
 
 logger = logging.getLogger(__name__)
+
 
 def calculate_real_relative_strength_daily(market_data: List, target_date: date) -> Dict[str, Optional[float]]:
     """Calculate Real Relative Strength over multiple periods up to a target date. Compare with SPY as benchmark.
@@ -29,7 +35,7 @@ def calculate_real_relative_strength_daily(market_data: List, target_date: date)
         
         # Convert to pandas DataFrame for easier manipulation
         df = pd.DataFrame([{
-            'date': record.date.isoformat(),
+            'date': record.date.isoformat() if hasattr(record.date, 'isoformat') else str(record.date),
             'close': record.close,
             'open': record.open,
             'high': record.high,
@@ -60,8 +66,6 @@ def calculate_real_relative_strength_daily(market_data: List, target_date: date)
             return {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
         
         # Get SPY data from database
-        import asyncio
-        
         async def get_spy_data():
             return await db_manager.get_market_data_for_calculation_up_to_date("SPY", target_date, days=len(symbol_data))
         
@@ -83,7 +87,7 @@ def calculate_real_relative_strength_daily(market_data: List, target_date: date)
         
         # Convert SPY data to DataFrame
         spy_df = pd.DataFrame([{
-            'date': record.date.isoformat(),
+            'date': record.date.isoformat() if hasattr(record.date, 'isoformat') else str(record.date),
             'close': record.close,
             'open': record.open,
             'high': record.high,

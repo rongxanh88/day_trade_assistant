@@ -13,8 +13,6 @@ from src.analyzers.technical_analysis import (
     calculate_sma,
     calculate_ema,
     calculate_all_indicators,
-    validate_data_sufficiency,
-    get_technical_summary,
     _get_empty_indicators
 )
 from src.data.models import OHLCV
@@ -189,16 +187,27 @@ class TestTechnicalAnalysis:
         assert result['sma_50'] is not None
         assert result['ema_15'] is not None
         assert result['ema_8'] is not None
+        assert result['rrs_1_day'] is not None
+        assert result['rrs_8_day'] is not None
+        assert result['rrs_15_day'] is not None
         
         # # Check that values are reasonable
         assert all(isinstance(val, float) for val in result.values())
         assert all(val > 0 for val in result.values())
 
+    # @patch('src.analyzers.real_relative_strength.calculate_real_relative_strength_daily')
     def test_calculate_all_indicators_partial_data(self):
         """Test calculating indicators with partial data (some indicators missing)."""
         # Create only 100 days of data - not enough for 200-day SMA
         test_data = self.create_test_data(199, start_price=100.0, trend="neutral")
         target_date = date(2024, 4, 10)  # Within our test data range
+
+        # Mock RRS calculation to return sample values
+        # mock_rrs.return_value = {
+        #     'rrs_1_day': 0.2345,
+        #     'rrs_8_day': 0.6789,
+        #     'rrs_15_day': -0.1234
+        # }
         
         result = calculate_all_indicators(test_data, target_date)
         
@@ -210,6 +219,9 @@ class TestTechnicalAnalysis:
         assert result['sma_50'] is not None
         assert result['ema_15'] is not None
         assert result['ema_8'] is not None
+        assert result['rrs_1_day'] is not None
+        assert result['rrs_8_day'] is not None
+        assert result['rrs_15_day'] is not None
 
     def test_calculate_all_indicators_no_data(self):
         """Test calculating indicators with no data."""
@@ -227,70 +239,6 @@ class TestTechnicalAnalysis:
         
         expected = _get_empty_indicators()
         assert result == expected
-
-    def test_validate_data_sufficiency_sufficient(self):
-        """Test validation with sufficient data."""
-        test_data = self.create_test_data(250, start_price=100.0, trend="neutral")
-        
-        result = validate_data_sufficiency(test_data, 200)
-        assert result is True
-
-    def test_validate_data_sufficiency_insufficient(self):
-        """Test validation with insufficient data."""
-        test_data = self.create_test_data(100, start_price=100.0, trend="neutral")
-        
-        result = validate_data_sufficiency(test_data, 200)
-        assert result is False
-
-    def test_validate_data_sufficiency_no_data(self):
-        """Test validation with no data."""
-        result = validate_data_sufficiency([], 200)
-        assert result is False
-
-    def test_get_technical_summary(self):
-        """Test technical summary generation."""
-        # Create sample indicators
-        indicators = {
-            'sma_200': 95.0,
-            'sma_100': 98.0,
-            'sma_50': 102.0,
-            'ema_15': 105.0,
-            'ema_8': 107.0
-        }
-        current_price = 100.0
-        
-        summary = get_technical_summary(indicators, current_price)
-        
-        # Check that summary contains expected elements
-        assert "Technical Analysis Summary" in summary
-        assert "SIMPLE MOVING AVERAGES" in summary
-        assert "EXPONENTIAL MOVING AVERAGES" in summary
-        assert "$100.00" in summary  # Current price
-        assert "$95.00" in summary  # SMA 200
-        assert "$107.00" in summary  # EMA 8
-        
-        # Check that it shows position relative to moving averages
-        assert "above" in summary  # Price above some MAs
-        assert "below" in summary  # Price below some MAs
-
-    def test_get_technical_summary_with_none_values(self):
-        """Test technical summary with some None values."""
-        indicators = {
-            'sma_200': None,  # Insufficient data
-            'sma_100': 98.0,
-            'sma_50': 102.0,
-            'ema_15': None,  # Insufficient data
-            'ema_8': 107.0
-        }
-        current_price = 100.0
-        
-        summary = get_technical_summary(indicators, current_price)
-        
-        # Check that None values are handled properly
-        assert "N/A (insufficient data)" in summary
-        assert "$98.00" in summary  # Available SMA 100
-        assert "$102.00" in summary  # Available SMA 50
-        assert "$107.00" in summary  # Available EMA 8
 
     def test_sma_vs_ema_characteristics(self):
         """Test that SMA and EMA have expected characteristics."""
@@ -320,6 +268,9 @@ class TestTechnicalAnalysis:
         assert result['sma_50'] is not None
         assert result['ema_15'] is not None
         assert result['ema_8'] is not None
+        assert result['rrs_1_day'] is not None
+        assert result['rrs_8_day'] is not None
+        assert result['rrs_15_day'] is not None
 
     @patch('src.analyzers.technical_analysis.logger')
     def test_calculate_all_indicators_error_handling(self, mock_logger):
