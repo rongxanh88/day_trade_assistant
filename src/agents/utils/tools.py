@@ -324,7 +324,7 @@ async def update_technical_indicators(target_date: str = None, num_days: int = 1
                             continue
                         
                         # Calculate technical indicators for this specific date
-                        indicators = calculate_all_indicators(market_data, calc_date)
+                        indicators = await calculate_all_indicators(market_data, calc_date)
                         
                         # Only save if we have at least some indicators calculated
                         if any(value is not None for value in indicators.values()):
