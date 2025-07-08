@@ -1,48 +1,40 @@
 import pytest
-import os
-import sys
+import numpy as np
 from datetime import date, timedelta
 from unittest.mock import patch
 
-
-# Add src to path so we can import our modules
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
+# Import the functions to test
 from src.analyzers.technical_analysis import (
     calculate_sma,
     calculate_ema,
     calculate_all_indicators,
     _get_empty_indicators
 )
+
+# Import OHLCV model for test data creation
 from src.data.models import OHLCV
 
-
 class TestTechnicalAnalysis:
-    """Test suite for technical analysis calculations."""
+    """Test suite for technical analysis functions."""
     
     def create_test_data(self, num_days: int, start_price: float = 100.0, trend: str = "neutral") -> list[OHLCV]:
-        """Create test market data with predictable patterns."""
+        """Create test OHLCV data for specified number of days."""
         data = []
-        current_price = start_price
         base_date = date(2024, 1, 1)
         
         for i in range(num_days):
-            # Create predictable price movement based on trend
+            # Calculate price based on trend
             if trend == "uptrend":
-                daily_change = 0.5 + (i * 0.1)  # Gradually increasing
+                close_price = start_price + (i * 0.1)
             elif trend == "downtrend":
-                daily_change = -0.5 - (i * 0.1)  # Gradually decreasing
+                close_price = start_price - (i * 0.1)
             else:  # neutral
-                daily_change = 0.2 * ((-1) ** i)  # Alternating small changes
-                
-            current_price += daily_change
+                close_price = start_price + np.random.normal(0, 0.5)  # Small random movement
             
-            # Create OHLC data with some variation
-            open_price = current_price
-            high_price = current_price + abs(daily_change) * 0.5
-            low_price = current_price - abs(daily_change) * 0.5
-            close_price = current_price
+            # Create OHLC from close price
+            open_price = close_price * 0.999
+            high_price = close_price * 1.005
+            low_price = close_price * 0.995
             
             data.append(OHLCV(
                 date=(base_date + timedelta(days=i)).isoformat(),
@@ -51,6 +43,36 @@ class TestTechnicalAnalysis:
                 low=low_price,
                 close=close_price,
                 volume=1000000 + i * 10000
+            ))
+        
+        return data
+
+    def create_spy_test_data(self, num_days: int, start_price: float = 400.0, trend: str = "neutral") -> list[OHLCV]:
+        """Create SPY test data for RRS calculations."""
+        data = []
+        base_date = date(2024, 1, 1)
+        
+        for i in range(num_days):
+            # Calculate SPY price based on trend
+            if trend == "uptrend":
+                close_price = start_price + (i * 0.05)  # Slower uptrend than typical stocks
+            elif trend == "downtrend":
+                close_price = start_price - (i * 0.05)
+            else:  # neutral
+                close_price = start_price + np.random.normal(0, 0.3)  # Lower volatility
+            
+            # Create OHLC from close price
+            open_price = close_price * 0.999
+            high_price = close_price * 1.002
+            low_price = close_price * 0.998
+            
+            data.append(OHLCV(
+                date=(base_date + timedelta(days=i)).isoformat(),
+                open=open_price,
+                high=high_price,
+                low=low_price,
+                close=close_price,
+                volume=5000000 + i * 50000  # Higher volume for SPY
             ))
         
         return data
@@ -173,13 +195,19 @@ class TestTechnicalAnalysis:
         assert ema_result > sma_result
         assert sma_result == 105.0
 
-    def test_calculate_all_indicators_complete(self):
+    @pytest.mark.asyncio
+    @patch('src.analyzers.technical_analysis.db_manager.get_market_data_for_calculation_up_to_date')
+    async def test_calculate_all_indicators_complete(self, mock_db_call):
         """Test calculating all indicators with sufficient data."""
         # Create 250 days of data to ensure all indicators can be calculated
         test_data = self.create_test_data(365, start_price=100.0, trend="uptrend")
+        spy_data = self.create_spy_test_data(365, start_price=400.0, trend="downtrend")
         target_date = date(2024, 12, 30)  # Well within our test data range
         
-        result = calculate_all_indicators(test_data, target_date)
+        # Mock the SPY data fetch
+        mock_db_call.return_value = spy_data
+        
+        result = await calculate_all_indicators(test_data, target_date)
 
         # Check that all indicators are calculated
         assert result['sma_200'] is not None
@@ -191,26 +219,55 @@ class TestTechnicalAnalysis:
         assert result['rrs_8_day'] is not None
         assert result['rrs_15_day'] is not None
         
-        # # Check that values are reasonable
+        # Check that values are reasonable
         assert all(isinstance(val, float) for val in result.values())
         assert all(val > 0 for val in result.values())
 
-    def test_calculate_all_indicators_no_data(self):
+    @pytest.mark.asyncio
+    async def test_calculate_all_indicators_no_data(self):
         """Test calculating indicators with no data."""
-        result = calculate_all_indicators([], date(2024, 1, 1))
+        result = await calculate_all_indicators([], date(2024, 1, 1))
         
         expected = _get_empty_indicators()
         assert result == expected
 
-    def test_calculate_all_indicators_target_date_not_found(self):
+    @pytest.mark.asyncio
+    @patch('src.analyzers.technical_analysis.db_manager.get_market_data_for_calculation_up_to_date')
+    async def test_calculate_all_indicators_target_date_not_found(self, mock_db_call):
         """Test calculating indicators when target date is not in data."""
         test_data = self.create_test_data(50, start_price=100.0, trend="neutral")
+        spy_data = self.create_spy_test_data(50, start_price=400.0, trend="neutral")
         target_date = date(2025, 1, 1)  # Date not in our test data
         
-        result = calculate_all_indicators(test_data, target_date)
+        # Mock the SPY data fetch
+        mock_db_call.return_value = spy_data
+        
+        result = await calculate_all_indicators(test_data, target_date)
         
         expected = _get_empty_indicators()
         assert result == expected
+
+    @pytest.mark.asyncio
+    @patch('src.analyzers.technical_analysis.db_manager.get_market_data_for_calculation_up_to_date')
+    async def test_calculate_all_indicators_no_spy_data(self, mock_db_call):
+        """Test calculating indicators when SPY data cannot be fetched."""
+        test_data = self.create_test_data(365, start_price=100.0, trend="uptrend")
+        target_date = date(2024, 12, 30)
+        
+        # Mock the SPY data fetch to return empty
+        mock_db_call.return_value = []
+        
+        result = await calculate_all_indicators(test_data, target_date)
+        
+        # SMA and EMA should be calculated, but RRS should be None
+        assert result['sma_200'] is not None
+        assert result['sma_100'] is not None
+        assert result['sma_50'] is not None
+        assert result['ema_15'] is not None
+        assert result['ema_8'] is not None
+        assert result['rrs_1_day'] is None
+        assert result['rrs_8_day'] is None
+        assert result['rrs_15_day'] is None
 
     def test_sma_vs_ema_characteristics(self):
         """Test that SMA and EMA have expected characteristics."""
@@ -226,14 +283,18 @@ class TestTechnicalAnalysis:
         # Since recent prices are higher, EMA should be higher than SMA
         assert ema_result > sma_result
 
-
+    @pytest.mark.asyncio
     @patch('src.analyzers.technical_analysis.logger')
-    def test_calculate_all_indicators_error_handling(self, mock_logger):
+    @patch('src.analyzers.technical_analysis.db_manager.get_market_data_for_calculation_up_to_date')
+    async def test_calculate_all_indicators_error_handling(self, mock_db_call, mock_logger):
         """Test error handling in calculate_all_indicators."""
         # Create invalid data that might cause an exception
         invalid_data = [None, "invalid", 123]  # Not OHLCV objects
         
-        result = calculate_all_indicators(invalid_data, date(2024, 1, 1))
+        # Mock SPY data
+        mock_db_call.return_value = []
+        
+        result = await calculate_all_indicators(invalid_data, date(2024, 1, 1))
         
         # Should return empty indicators and log error
         expected = _get_empty_indicators()

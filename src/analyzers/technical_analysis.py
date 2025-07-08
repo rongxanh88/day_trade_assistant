@@ -12,6 +12,8 @@ from datetime import date
 
 # Import RRS utility functions
 from .real_relative_strength import calculate_real_relative_strength_daily
+# Add database import for SPY data
+from src.utils.database import db_manager
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +62,7 @@ def calculate_ema(prices: List[float], period: int) -> Optional[float]:
     return round(ema, 2)
 
 
-def calculate_all_indicators(market_data: List, target_date: date) -> Dict[str, Optional[float]]:
+async def calculate_all_indicators(market_data: List, target_date: date) -> Dict[str, Optional[float]]:
     """Calculate all required technical indicators for a given dataset.
     
     Args:
@@ -116,9 +118,22 @@ def calculate_all_indicators(market_data: List, target_date: date) -> Dict[str, 
         indicators['ema_15'] = calculate_ema(prices_up_to_target, 15)
         indicators['ema_8'] = calculate_ema(prices_up_to_target, 8)
         
-        # Real Relative Strength indicators
-        rrs_indicators = calculate_real_relative_strength_daily(market_data, target_date)
-        indicators.update(rrs_indicators)
+        # Real Relative Strength indicators - fetch SPY data
+        try:
+            spy_data = await db_manager.get_market_data_for_calculation_up_to_date(
+                "SPY", target_date, days=len(market_data)
+            )
+            
+            if spy_data:
+                rrs_indicators = calculate_real_relative_strength_daily(market_data, spy_data, target_date)
+                indicators.update(rrs_indicators)
+            else:
+                logger.warning("Could not fetch SPY data for RRS calculation")
+                indicators.update({'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None})
+                
+        except Exception as e:
+            logger.error(f"Error fetching SPY data for RRS calculation: {e}")
+            indicators.update({'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None})
         
         return indicators
         
