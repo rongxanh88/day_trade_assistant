@@ -573,6 +573,9 @@ async def get_advanced_stock_analysis(symbol: str, analysis_date: str = None, da
         • 50-day SMA: ${technical_data.sma_50 or 'N/A'}
         • 15-day EMA: ${technical_data.ema_15 or 'N/A'}
         • 8-day EMA: ${technical_data.ema_8 or 'N/A'}
+        • 1-day Real Relative Strength: ${technical_data.rrs_1_day or 'N/A'}
+        • 8-day Real Relative Strength: ${technical_data.rrs_8_day or 'N/A'}
+        • 15-day Real Relative Strength: ${technical_data.rrs_15_day or 'N/A'}
         """
         else:
             analysis_prompt += "\nTechnical Indicators: Not available for the requested date period."
