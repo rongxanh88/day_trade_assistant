@@ -442,7 +442,10 @@ async def get_technical_analysis(symbol: str, analysis_date: str = None) -> str:
             'sma_100': technical_data.sma_100,
             'sma_50': technical_data.sma_50,
             'ema_15': technical_data.ema_15,
-            'ema_8': technical_data.ema_8
+            'ema_8': technical_data.ema_8,
+            'rrs_1_day': technical_data.rrs_1_day,
+            'rrs_8_day': technical_data.rrs_8_day,
+            'rrs_15_day': technical_data.rrs_15_day
         }
         
         # Generate technical summary
