@@ -7,6 +7,7 @@ from unittest.mock import patch
 from src.analyzers.technical_analysis import (
     calculate_sma,
     calculate_ema,
+    calculate_relative_volume,
     calculate_all_indicators,
     _get_empty_indicators
 )
@@ -218,6 +219,7 @@ class TestTechnicalAnalysis:
         assert result['rrs_1_day'] is not None
         assert result['rrs_8_day'] is not None
         assert result['rrs_15_day'] is not None
+        assert result['relative_volume'] is not None
         
         # Check that values are reasonable
         assert all(isinstance(val, float) for val in result.values())
@@ -259,12 +261,13 @@ class TestTechnicalAnalysis:
         
         result = await calculate_all_indicators(test_data, target_date)
         
-        # SMA and EMA should be calculated, but RRS should be None
+        # SMA, EMA, and relative volume should be calculated, but RRS should be None
         assert result['sma_200'] is not None
         assert result['sma_100'] is not None
         assert result['sma_50'] is not None
         assert result['ema_15'] is not None
         assert result['ema_8'] is not None
+        assert result['relative_volume'] is not None  # Should be calculated from stock data
         assert result['rrs_1_day'] is None
         assert result['rrs_8_day'] is None
         assert result['rrs_15_day'] is None
@@ -282,6 +285,108 @@ class TestTechnicalAnalysis:
         # EMA should be more responsive to recent trend
         # Since recent prices are higher, EMA should be higher than SMA
         assert ema_result > sma_result
+
+    def test_calculate_relative_volume_basic(self):
+        """Test basic relative volume calculation."""
+        # Create 21 days of volume data (20 historical + 1 current)
+        volumes = [1000000] * 20 + [1500000]  # Current day has 1.5x normal volume
+        
+        result = calculate_relative_volume(volumes, 20)
+        expected = 1500000 / 1000000  # 1.5
+        assert result == round(expected, 2)
+        assert result == 1.5
+
+    def test_calculate_relative_volume_default_period(self):
+        """Test relative volume with default 20-day period."""
+        # Create 25 days of volume data
+        base_volume = 1000000
+        volumes = [base_volume + (i * 10000) for i in range(24)] + [2000000]  # High volume day
+        
+        result = calculate_relative_volume(volumes)  # Using default period=20
+        assert result is not None
+        assert isinstance(result, float)
+        assert result > 1.0  # Should be higher than average
+
+    def test_calculate_relative_volume_custom_period(self):
+        """Test relative volume with custom period."""
+        # Create 11 days of volume data (10 historical + 1 current)
+        volumes = [500000] * 10 + [1000000]  # Current day has 2x normal volume
+        
+        result = calculate_relative_volume(volumes, 10)
+        expected = 1000000 / 500000  # 2.0
+        assert result == round(expected, 2)
+        assert result == 2.0
+
+    def test_calculate_relative_volume_insufficient_data(self):
+        """Test relative volume calculation with insufficient data."""
+        # Only 5 days of data, but requesting 20-day period
+        volumes = [1000000] * 5
+        
+        result = calculate_relative_volume(volumes, 20)
+        assert result is None
+
+    def test_calculate_relative_volume_empty_data(self):
+        """Test relative volume calculation with empty data."""
+        volumes = []
+        result = calculate_relative_volume(volumes, 20)
+        assert result is None
+
+    def test_calculate_relative_volume_zero_average(self):
+        """Test relative volume when historical average is zero."""
+        # Historical volumes are zero, current is non-zero
+        volumes = [0] * 20 + [1000000]
+        
+        result = calculate_relative_volume(volumes, 20)
+        assert result is None  # Should handle division by zero
+
+    def test_calculate_relative_volume_zero_current(self):
+        """Test relative volume when current volume is zero."""
+        # Normal historical volumes, but current volume is zero
+        volumes = [1000000] * 20 + [0]
+        
+        result = calculate_relative_volume(volumes, 20)
+        assert result == 0.0
+
+    def test_calculate_relative_volume_varying_volumes(self):
+        """Test relative volume with realistic varying volume data."""
+        # Create realistic volume pattern
+        base_volumes = [800000, 1200000, 900000, 1100000, 950000] * 4  # 20 days
+        current_volume = 1800000  # High volume day
+        volumes = base_volumes + [current_volume]
+        
+        result = calculate_relative_volume(volumes, 20)
+        average_volume = sum(base_volumes) / len(base_volumes)
+        expected = current_volume / average_volume
+        
+        assert result == round(expected, 2)
+        assert result > 1.0  # Should indicate above-average volume
+
+    def test_calculate_relative_volume_below_average(self):
+        """Test relative volume when current volume is below average."""
+        # High historical volumes, low current volume
+        volumes = [2000000] * 20 + [500000]  # Current day has 0.25x normal volume
+        
+        result = calculate_relative_volume(volumes, 20)
+        expected = 500000 / 2000000  # 0.25
+        assert result == round(expected, 2)
+        assert result == 0.25
+        assert result < 1.0  # Should indicate below-average volume
+
+    def test_calculate_relative_volume_exact_average(self):
+        """Test relative volume when current volume equals average."""
+        # All volumes are the same
+        volumes = [1000000] * 21
+        
+        result = calculate_relative_volume(volumes, 20)
+        assert result == 1.0  # Should be exactly 1.0
+
+    def test_calculate_relative_volume_minimal_data(self):
+        """Test relative volume with minimal required data."""
+        # Exactly 21 data points for 20-day period
+        volumes = [1000000] * 20 + [1500000]
+        
+        result = calculate_relative_volume(volumes, 20)
+        assert result == 1.5
 
     @pytest.mark.asyncio
     @patch('src.analyzers.technical_analysis.logger')
