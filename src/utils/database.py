@@ -61,6 +61,9 @@ class TechnicalIndicators(Base):
     rrs_8_day = Column(Float, nullable=True)
     rrs_15_day = Column(Float, nullable=True)
     
+    # Volume indicators
+    relative_volume = Column(Float, nullable=True)
+    
     # Metadata
     created_at = Column(DateTime, default=datetime.now())
     updated_at = Column(DateTime, default=datetime.now(), onupdate=datetime.now())
@@ -335,6 +338,7 @@ class DatabaseManager:
                     'rrs_1_day': indicators.get('rrs_1_day'),
                     'rrs_8_day': indicators.get('rrs_8_day'),
                     'rrs_15_day': indicators.get('rrs_15_day'),
+                    'relative_volume': indicators.get('relative_volume'),
                     'created_at': datetime.now(),
                     'updated_at': datetime.now()
                 }
@@ -352,6 +356,7 @@ class DatabaseManager:
                         'rrs_1_day': stmt.excluded.rrs_1_day,
                         'rrs_8_day': stmt.excluded.rrs_8_day,
                         'rrs_15_day': stmt.excluded.rrs_15_day,
+                        'relative_volume': stmt.excluded.relative_volume,
                         'updated_at': datetime.now()
                     }
                 )

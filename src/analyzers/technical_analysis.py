@@ -62,6 +62,38 @@ def calculate_ema(prices: List[float], period: int) -> Optional[float]:
     return round(ema, 2)
 
 
+def calculate_relative_volume(volumes: List[int], period: int = 20) -> Optional[float]:
+    """Calculate Relative Volume for the current day against average volume.
+    
+    Args:
+        volumes: List of volumes (most recent volume should be last)
+        period: Number of periods to use for average calculation (default 20)
+        
+    Returns:
+        Relative volume ratio or None if insufficient data
+    """
+    if len(volumes) < period + 1:  # Need period + 1 for current day + historical average
+        return None
+    
+    # Current day volume (last in the list)
+    current_volume = volumes[-1]
+    
+    # Previous 'period' days volumes (excluding current day)
+    historical_volumes = volumes[-(period + 1):-1]
+    
+    # Calculate average of historical volumes
+    average_volume = sum(historical_volumes) / len(historical_volumes)
+    
+    # Avoid division by zero
+    if average_volume == 0:
+        return None
+    
+    # Calculate relative volume ratio
+    relative_volume = current_volume / average_volume
+    
+    return round(relative_volume, 2)
+
+
 async def calculate_all_indicators(market_data: List, target_date: date) -> Dict[str, Optional[float]]:
     """Calculate all required technical indicators for a given dataset.
     
@@ -103,8 +135,9 @@ async def calculate_all_indicators(market_data: List, target_date: date) -> Dict
         
         target_index = target_row.index[0]
 
-        # Get prices up to and including the target date
+        # Get prices and volumes up to and including the target date
         prices_up_to_target = df.loc[:target_index, 'close'].tolist()
+        volumes_up_to_target = df.loc[:target_index, 'volume'].tolist()
 
         # Calculate all indicators
         indicators = {}
@@ -117,6 +150,9 @@ async def calculate_all_indicators(market_data: List, target_date: date) -> Dict
         # Exponential Moving Averages
         indicators['ema_15'] = calculate_ema(prices_up_to_target, 15)
         indicators['ema_8'] = calculate_ema(prices_up_to_target, 8)
+        
+        # Volume indicators
+        indicators['relative_volume'] = calculate_relative_volume(volumes_up_to_target, 20)
         
         # Real Relative Strength indicators - fetch SPY data
         try:
@@ -152,6 +188,7 @@ def _get_empty_indicators() -> Dict[str, Optional[float]]:
         'ema_8': None,
         'rrs_1_day': None,
         'rrs_8_day': None,
-        'rrs_15_day': None
+        'rrs_15_day': None,
+        'relative_volume': None
     }
 
