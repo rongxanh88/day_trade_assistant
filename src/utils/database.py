@@ -75,6 +75,18 @@ class TechnicalIndicators(Base):
         Index('idx_tech_date', 'date'),
     )
 
+class StockUniverse(Base):
+    """Database model for the stock universe."""
+    __tablename__ = "stock_universe"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(10), nullable=False)
+    name = Column(String(255), nullable=False)
+    sector = Column(String(255), nullable=False)
+    industry = Column(String(255), nullable=False)
+    country = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.now())
+
 
 class DatabaseManager:
     """Async database manager for PostgreSQL operations."""
