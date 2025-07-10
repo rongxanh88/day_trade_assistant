@@ -3,10 +3,8 @@ from datetime import datetime, date, timedelta
 from typing import List
 from langchain_core.tools import tool
 
-from config.sp500_symbols import get_sp500_symbols
 from src.integrations.tradier_client import tradier_client
 from src.utils.database import db_manager
-from config.sp500_symbols import get_sp500_symbols
 from src.analyzers.technical_analysis import calculate_all_indicators
 from src.analyzers.utils import validate_data_sufficiency, get_technical_summary
 
@@ -15,25 +13,25 @@ logger = logging.getLogger(__name__)
 
 @tool
 async def update_market_data() -> str:
-    """Update S&P 500 market data by fetching missing daily data from the past year.
+    """Update stock universe market data by fetching missing daily data from the past year.
     
     This tool checks the database for missing market data and fetches it from the Tradier API.
-    It processes all S&P 500 symbols and can take several minutes to complete.
+    It processes all symbols in the stock universe and can take several minutes to complete.
     
     Returns:
         A summary message indicating the results of the update operation.
     """
     logger.info("Starting daily market data update via tool...")
     
-    # Get complete S&P 500 symbols list
-    sp500_symbols = get_sp500_symbols()
+    # Get all symbols from stock universe table
+    stock_symbols = await db_manager.get_all_stock_universe_symbols()
     
-    if not sp500_symbols:
-        error_msg = "No S&P 500 symbols found in configuration"
+    if not stock_symbols:
+        error_msg = "No symbols found in stock universe table"
         logger.error(error_msg)
         return f"❌ {error_msg}"
     
-    logger.info(f"Loaded {len(sp500_symbols)} S&P 500 symbols for market data update")
+    logger.info(f"Loaded {len(stock_symbols)} symbols from stock universe for market data update")
     
     # Calculate date range for the past year
     end_date = date.today()
@@ -43,9 +41,9 @@ async def update_market_data() -> str:
         symbols_updated = 0
         total_records_fetched = 0
         
-        for idx, symbol in enumerate(sp500_symbols, 1):
+        for idx, symbol in enumerate(stock_symbols, 1):
             try:
-                logger.info(f"[{idx}/{len(sp500_symbols)}] Checking market data for {symbol}...")
+                logger.info(f"[{idx}/{len(stock_symbols)}] Checking market data for {symbol}...")
                 
                 # Get existing data dates from database
                 existing_dates = await db_manager.get_existing_data_dates(symbol, start_date, end_date)
@@ -106,7 +104,7 @@ async def update_market_data() -> str:
                 
                 # Log progress every 50 symbols
                 if idx % 50 == 0:
-                    progress_message = f"Progress: {idx}/{len(sp500_symbols)} symbols processed ({symbols_updated} updated, {total_records_fetched} records fetched)"
+                    progress_message = f"Progress: {idx}/{len(stock_symbols)} symbols processed ({symbols_updated} updated, {total_records_fetched} records fetched)"
                     logger.info(progress_message)
                 
             except Exception as e:
@@ -114,7 +112,7 @@ async def update_market_data() -> str:
                 # Continue with other symbols instead of failing completely
                 continue
         
-        success_msg = f"✅ S&P 500 market data update completed successfully! Processed {symbols_updated}/{len(sp500_symbols)} symbols and fetched {total_records_fetched} new records."
+        success_msg = f"✅ Stock universe market data update completed successfully! Processed {symbols_updated}/{len(stock_symbols)} symbols and fetched {total_records_fetched} new records."
         logger.info(success_msg)
         return success_msg
         
@@ -147,17 +145,15 @@ async def get_symbol_data(symbol: str, days: int = 50) -> str:
     # Limit days to reasonable range
     days = max(1, min(days, 252))  # 1 day to 1 year of trading days
     
-    # Validate symbol is in our supported list
-    sp500_symbols = get_sp500_symbols()
-    if symbol not in sp500_symbols:
-        return f"❌ Symbol '{symbol}' is not found in our S&P 500 database. Available symbols include major stocks like AAPL, MSFT, TSLA, etc."
+    # Note: Symbol validation will be handled by the database query
+    # If the symbol doesn't exist in our stock universe, the query will return no results
     
     try:
         # Get market data from database
         market_data = await db_manager.get_recent_market_data(symbol, days)
         
         if not market_data:
-            return f"❌ No market data found for {symbol}. Try running a market data update first."
+            return f"❌ No market data found for {symbol}. The symbol may not be in our stock universe or you may need to run a market data update first."
         
         # Format the data for LLM context
         formatted_data = _format_market_data_for_context(market_data, symbol, days)

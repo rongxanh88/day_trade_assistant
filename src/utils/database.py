@@ -437,6 +437,25 @@ class DatabaseManager:
                 logger.error(f"Failed to get market data for calculation up to {end_date} for {symbol}: {e}")
                 raise
 
+    async def get_all_stock_universe_symbols(self) -> List[str]:
+        """Get all symbols from the stock_universe table.
+        
+        Returns:
+            List of stock symbols from the stock universe
+        """
+        async with self.async_session() as session:
+            try:
+                result = await session.execute(
+                    select(StockUniverse.symbol)
+                    .order_by(StockUniverse.symbol)
+                )
+                symbols = [row[0] for row in result.fetchall()]
+                logger.info(f"Retrieved {len(symbols)} symbols from stock universe")
+                return symbols
+            except Exception as e:
+                logger.error(f"Failed to get symbols from stock universe: {e}")
+                raise
+
 
 # Global database manager instance
 db_manager = DatabaseManager() 

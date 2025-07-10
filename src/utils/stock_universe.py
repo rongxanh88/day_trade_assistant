@@ -140,21 +140,6 @@ class StockUniverseManager:
                 logger.error(f"Failed to update stock universe table: {e}")
                 raise
     
-    async def get_universe_symbols(self) -> List[str]:
-        """Get all symbols from the current stock universe."""
-        async with self.db.async_session() as session:
-            try:
-                result = await session.execute(
-                    select(StockUniverse.symbol).order_by(StockUniverse.symbol)
-                )
-                symbols = [row[0] for row in result.fetchall()]
-                logger.info(f"Retrieved {len(symbols)} symbols from stock universe")
-                return symbols
-                
-            except Exception as e:
-                logger.error(f"Failed to get universe symbols: {e}")
-                raise
-
 
 async def main():
     """CLI entry point."""
