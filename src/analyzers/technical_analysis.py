@@ -9,6 +9,8 @@ import logging
 from typing import List, Dict, Optional
 import pandas as pd
 from datetime import date
+import numpy as np
+import talib as ta
 
 # Import RRS utility functions
 from .real_relative_strength import calculate_real_relative_strength_daily
@@ -31,9 +33,9 @@ def calculate_sma(prices: List[float], period: int) -> Optional[float]:
     if len(prices) < period:
         return None
     
-    # Take the last 'period' prices and calculate average
-    recent_prices = prices[-period:]
-    return round(sum(recent_prices) / len(recent_prices), 2)
+    prices = np.array(prices)
+    sma = ta.SMA(prices, timeperiod=period)
+    return round(sma[-1], 2)
 
 
 def calculate_ema(prices: List[float], period: int) -> Optional[float]:
@@ -49,17 +51,9 @@ def calculate_ema(prices: List[float], period: int) -> Optional[float]:
     if len(prices) < period:
         return None
     
-    # Calculate smoothing factor (alpha)
-    alpha = 2.0 / (period + 1)
-    
-    # Initialize EMA with first price
-    ema = prices[0]
-    
-    # Calculate EMA iteratively
-    for price in prices[1:]:
-        ema = alpha * price + (1 - alpha) * ema
-    
-    return round(ema, 2)
+    prices = np.array(prices)
+    ema = ta.EMA(prices, timeperiod=period)
+    return round(ema[-1], 2)
 
 
 def calculate_relative_volume(volumes: List[int], period: int = 20) -> Optional[float]:

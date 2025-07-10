@@ -67,6 +67,7 @@ orjson==3.10.18
 ormsgpack==1.10.0
 packaging==24.2
 pandas==2.3.0
+pandas_ta==0.3.14b0
 pluggy==1.6.0
 propcache==0.3.2
 proto-plus==1.26.1
