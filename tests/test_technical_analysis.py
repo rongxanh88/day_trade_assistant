@@ -217,6 +217,7 @@ class TestTechnicalAnalysis:
         assert result['ema_15'] is not None
         assert result['ema_8'] is not None
         assert result['rrs_1_day'] is not None
+        assert result['rrs_3_day'] is not None
         assert result['rrs_8_day'] is not None
         assert result['rrs_15_day'] is not None
         assert result['relative_volume'] is not None
@@ -269,6 +270,7 @@ class TestTechnicalAnalysis:
         assert result['ema_8'] is not None
         assert result['relative_volume'] is not None  # Should be calculated from stock data
         assert result['rrs_1_day'] is None
+        assert result['rrs_3_day'] is None
         assert result['rrs_8_day'] is None
         assert result['rrs_15_day'] is None
 

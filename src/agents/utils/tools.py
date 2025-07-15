@@ -440,6 +440,7 @@ async def get_technical_analysis(symbol: str, analysis_date: str = None) -> str:
             'ema_15': technical_data.ema_15,
             'ema_8': technical_data.ema_8,
             'rrs_1_day': technical_data.rrs_1_day,
+            'rrs_3_day': technical_data.rrs_3_day,
             'rrs_8_day': technical_data.rrs_8_day,
             'rrs_15_day': technical_data.rrs_15_day
         }
@@ -570,6 +571,7 @@ async def get_advanced_stock_analysis(symbol: str, analysis_date: str = None, da
         • 15-day EMA: ${technical_data.ema_15 or 'N/A'}
         • 8-day EMA: ${technical_data.ema_8 or 'N/A'}
         • 1-day Real Relative Strength: ${technical_data.rrs_1_day or 'N/A'}
+        • 3-day Real Relative Strength: ${technical_data.rrs_3_day or 'N/A'}
         • 8-day Real Relative Strength: ${technical_data.rrs_8_day or 'N/A'}
         • 15-day Real Relative Strength: ${technical_data.rrs_15_day or 'N/A'}
         """

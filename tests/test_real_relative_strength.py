@@ -506,16 +506,19 @@ class TestCalculateRealRelativeStrengthDaily:
         # Verify structure
         assert isinstance(result, dict)
         assert 'rrs_1_day' in result
+        assert 'rrs_3_day' in result
         assert 'rrs_8_day' in result
         assert 'rrs_15_day' in result
         
         # All values should be calculated (not None)
         assert result['rrs_1_day'] is not None
+        assert result['rrs_3_day'] is not None
         assert result['rrs_8_day'] is not None
         assert result['rrs_15_day'] is not None
         
         # All should be positive (symbol outperforms SPY)
         assert result['rrs_1_day'] > 0
+        assert result['rrs_3_day'] > 0
         assert result['rrs_8_day'] > 0
         assert result['rrs_15_day'] > 0
     
@@ -527,7 +530,7 @@ class TestCalculateRealRelativeStrengthDaily:
         result = calculate_real_relative_strength_daily([], spy_data, target_date)
         
         # Should return None values for all periods
-        assert result == {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+        assert result == {'rrs_1_day': None, 'rrs_3_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
     
     def test_calculate_real_relative_strength_daily_no_spy_data(self):
         """Test RRS when no SPY data is provided."""
@@ -537,7 +540,7 @@ class TestCalculateRealRelativeStrengthDaily:
         result = calculate_real_relative_strength_daily(symbol_data, [], target_date)
         
         # Should return None values due to missing SPY data
-        assert result == {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+        assert result == {'rrs_1_day': None, 'rrs_3_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
     
     def test_calculate_real_relative_strength_daily_target_date_not_found(self):
         """Test RRS when target date is not in the data."""
@@ -549,7 +552,7 @@ class TestCalculateRealRelativeStrengthDaily:
         result = calculate_real_relative_strength_daily(symbol_data, spy_data, target_date)
         
         # Should return None values
-        assert result == {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+        assert result == {'rrs_1_day': None, 'rrs_3_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
     
     def test_calculate_real_relative_strength_daily_insufficient_data(self):
         """Test RRS with insufficient data (less than 20 days)."""
@@ -561,7 +564,7 @@ class TestCalculateRealRelativeStrengthDaily:
         result = calculate_real_relative_strength_daily(symbol_data, spy_data, target_date)
         
         # Should return None values due to insufficient data
-        assert result == {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+        assert result == {'rrs_1_day': None, 'rrs_3_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
     
     def test_calculate_real_relative_strength_daily_mismatched_spy_data(self):
         """Test RRS when SPY data length doesn't match symbol data."""
@@ -577,6 +580,7 @@ class TestCalculateRealRelativeStrengthDaily:
         # Should still work
         assert isinstance(result, dict)
         assert 'rrs_1_day' in result
+        assert 'rrs_3_day' in result
         assert 'rrs_8_day' in result
         assert 'rrs_15_day' in result
     
@@ -596,6 +600,7 @@ class TestCalculateRealRelativeStrengthDaily:
         
         # All values should be calculated
         assert result['rrs_1_day'] is not None
+        assert result['rrs_3_day'] is not None
         assert result['rrs_8_day'] is not None
         assert result['rrs_15_day'] is not None
         
@@ -614,6 +619,7 @@ class TestCalculateRealRelativeStrengthDaily:
         result = calculate_real_relative_strength_daily(symbol_data, spy_data, target_date)
         
         assert result['rrs_1_day'] is not None
+        assert result['rrs_3_day'] is not None
         assert result['rrs_8_day'] is not None
         assert result['rrs_15_day'] is not None
     
@@ -627,7 +633,7 @@ class TestCalculateRealRelativeStrengthDaily:
         result = calculate_real_relative_strength_daily(symbol_data, spy_data, target_date)
         
         # Should return None values when exception occurs
-        assert result == {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+        assert result == {'rrs_1_day': None, 'rrs_3_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
     
     def test_calculate_real_relative_strength_daily_realistic_scenario(self):
         """Test RRS with realistic market scenario."""
@@ -658,7 +664,7 @@ class TestCalculateRealRelativeStrengthDaily:
         
         # Should get realistic results
         assert isinstance(result, dict)
-        assert all(key in result for key in ['rrs_1_day', 'rrs_8_day', 'rrs_15_day'])
+        assert all(key in result for key in ['rrs_1_day', 'rrs_3_day', 'rrs_8_day', 'rrs_15_day'])
         
         # Values should be calculated (not None)
         assert all(value is not None for value in result.values())

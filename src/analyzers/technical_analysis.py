@@ -149,6 +149,7 @@ async def calculate_all_indicators(market_data: List, target_date: date) -> Dict
         indicators['relative_volume'] = calculate_relative_volume(volumes_up_to_target, 20)
         
         # Real Relative Strength indicators - fetch SPY data
+        default_rrs_indicators = {'rrs_1_day': None, 'rrs_3_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
         try:
             spy_data = await db_manager.get_market_data_for_calculation_up_to_date(
                 "SPY", target_date, days=len(market_data)
@@ -159,11 +160,11 @@ async def calculate_all_indicators(market_data: List, target_date: date) -> Dict
                 indicators.update(rrs_indicators)
             else:
                 logger.warning("Could not fetch SPY data for RRS calculation")
-                indicators.update({'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None})
+                indicators.update(default_rrs_indicators)
                 
         except Exception as e:
             logger.error(f"Error fetching SPY data for RRS calculation: {e}")
-            indicators.update({'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None})
+            indicators.update(default_rrs_indicators)
         
         return indicators
         
@@ -181,6 +182,7 @@ def _get_empty_indicators() -> Dict[str, Optional[float]]:
         'ema_15': None,
         'ema_8': None,
         'rrs_1_day': None,
+        'rrs_3_day': None,
         'rrs_8_day': None,
         'rrs_15_day': None,
         'relative_volume': None

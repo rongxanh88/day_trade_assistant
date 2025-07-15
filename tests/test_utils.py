@@ -76,6 +76,7 @@ class TestUtils:
             'ema_15': 105.0,
             'ema_8': 107.0,
             'rrs_1_day': 1.0,
+            'rrs_3_day': 1.0,
             'rrs_8_day': 1.0,
             'rrs_15_day': 1.0
         }
@@ -110,6 +111,7 @@ class TestUtils:
             'ema_15': None,  # Insufficient data
             'ema_8': 107.0,
             'rrs_1_day': None, # Insufficient data
+            'rrs_3_day': None, # Insufficient data
             'rrs_8_day': None, # Insufficient data
             'rrs_15_day': None # Insufficient data
         }

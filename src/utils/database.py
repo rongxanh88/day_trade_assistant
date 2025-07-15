@@ -58,6 +58,7 @@ class TechnicalIndicators(Base):
     
     # Real Relative Strength
     rrs_1_day = Column(Float, nullable=True)
+    rrs_3_day = Column(Float, nullable=True)
     rrs_8_day = Column(Float, nullable=True)
     rrs_15_day = Column(Float, nullable=True)
     
@@ -348,6 +349,7 @@ class DatabaseManager:
                     'ema_15': indicators.get('ema_15'),
                     'ema_8': indicators.get('ema_8'),
                     'rrs_1_day': indicators.get('rrs_1_day'),
+                    'rrs_3_day': indicators.get('rrs_3_day'),
                     'rrs_8_day': indicators.get('rrs_8_day'),
                     'rrs_15_day': indicators.get('rrs_15_day'),
                     'relative_volume': indicators.get('relative_volume'),
@@ -366,6 +368,7 @@ class DatabaseManager:
                         'ema_15': stmt.excluded.ema_15,
                         'ema_8': stmt.excluded.ema_8,
                         'rrs_1_day': stmt.excluded.rrs_1_day,
+                        'rrs_3_day': stmt.excluded.rrs_3_day,
                         'rrs_8_day': stmt.excluded.rrs_8_day,
                         'rrs_15_day': stmt.excluded.rrs_15_day,
                         'relative_volume': stmt.excluded.relative_volume,

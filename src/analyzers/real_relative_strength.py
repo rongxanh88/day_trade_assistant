@@ -29,14 +29,17 @@ def calculate_real_relative_strength_daily(
     Returns:
         Dictionary containing real relative strength for 1 day, 8 day, and 15 day periods
     """
+    default_rrs_values = {'rrs_1_day': None, 'rrs_3_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+
     try:
+
         if not market_data:
             logger.warning("No market data provided for RRS calculation")
-            return {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+            return default_rrs_values
         
         if not spy_data:
             logger.warning("No SPY data provided for RRS calculation")
-            return {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+            return default_rrs_values
         
         # Convert to pandas DataFrames for easier manipulation
         symbol_df = _convert_to_dataframe(market_data)
@@ -53,7 +56,7 @@ def calculate_real_relative_strength_daily(
         target_row = symbol_df[symbol_df['date'] == target_date_str]
         if target_row.empty:
             logger.warning(f"No data found for target date {target_date_str}")
-            return {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+            return default_rrs_values
         
         target_index = target_row.index[0]
         
@@ -63,7 +66,7 @@ def calculate_real_relative_strength_daily(
         # Need at least 20 days for the longest calculation (15 + some buffer)
         if len(symbol_data) < 20:
             logger.warning(f"Insufficient symbol data for RRS calculation: {len(symbol_data)} days available, 20+ required")
-            return {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+            return default_rrs_values
         
         # Align SPY data with symbol data by date
         spy_aligned = spy_df[spy_df['date'].isin(symbol_data['date'])].copy()
@@ -71,20 +74,20 @@ def calculate_real_relative_strength_daily(
         
         if len(spy_aligned) < 20:
             logger.warning(f"Insufficient SPY data for RRS calculation: {len(spy_aligned)} days available, 20+ required")
-            return {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+            return default_rrs_values
         
         # Ensure both datasets have the same length by taking the overlap
         min_length = min(len(spy_aligned), len(symbol_data))
         if min_length < 20:
             logger.warning(f"Insufficient overlapping data for RRS calculation: {min_length} days available")
-            return {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+            return default_rrs_values
         
         spy_aligned = spy_aligned.tail(min_length).reset_index(drop=True)
         symbol_data = symbol_data.tail(min_length).reset_index(drop=True)
         
         # Calculate RRS for each period
         results = {}
-        periods = [1, 8, 15]
+        periods = [1, 3, 8, 15]
         
         for period in periods:
             rrs_value = calculate_rrs_for_period(symbol_data, spy_aligned, period)
@@ -94,7 +97,7 @@ def calculate_real_relative_strength_daily(
         
     except Exception as e:
         logger.error(f"Error calculating Real Relative Strength: {e}")
-        return {'rrs_1_day': None, 'rrs_8_day': None, 'rrs_15_day': None}
+        return default_rrs_values
 
 
 def _convert_to_dataframe(market_data: List) -> pd.DataFrame:
